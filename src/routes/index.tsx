@@ -17,6 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AuthPrototypeDialog, type AuthMode } from "@/components/auth-prototype-dialog";
 import logoAsset from "@/assets/dragon-system-3-logo.jpg.asset.json";
 import teamAsset from "@/assets/dragon-system-3-team.jpg.asset.json";
 
@@ -56,6 +57,15 @@ const apps = [
 
 function Index() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+
+  const openAuth = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setAuthOpen(true);
+    setMenuOpen(false);
+  };
+
   return (
     <div className="min-h-screen overflow-x-hidden bg-background text-foreground">
       <header className="fixed inset-x-0 top-0 z-50 border-b border-border/80 bg-background/90 backdrop-blur-xl">
@@ -72,19 +82,20 @@ function Index() {
           </nav>
           <div className="hidden items-center gap-2 md:flex xl:ml-2">
             <div className="hidden items-center gap-2 rounded-md border border-primary/35 bg-muted/70 px-3 py-2 text-xs text-primary lg:flex"><Coins className="size-4" /> Ví Xu: Đăng nhập để xem</div>
-            <Button variant="dragonOutline" size="sm" disabled title="Tính năng đăng nhập sắp kết nối">Đăng nhập (sắp kết nối)</Button>
-            <Button variant="dragon" size="sm" disabled title="Tính năng đăng ký sắp kết nối">Đăng ký (sắp kết nối)</Button>
+            <Button variant="dragonOutline" size="sm" onClick={() => openAuth("login")}>Đăng nhập</Button>
+            <Button variant="dragon" size="sm" onClick={() => openAuth("register")}>Đăng ký</Button>
           </div>
           <Button variant="dragonOutline" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Đóng menu" : "Mở menu"}>{menuOpen ? <X /> : <Menu />}</Button>
         </div>
         {menuOpen && <div className="border-t border-border bg-background p-4 md:hidden">
           <div className="mb-3 flex items-center gap-2 rounded-md border border-primary/35 bg-muted/70 px-3 py-2 text-xs text-primary"><Coins className="size-4" /> Ví Xu: Đăng nhập để xem</div>
           <nav className="grid gap-1">{navItems.map(([label, href]) => <a key={href} href={href} onClick={() => setMenuOpen(false)} className="flex items-center justify-between rounded-md px-3 py-3 text-sm hover:bg-muted">{label}<ChevronRight className="size-4 text-primary" /></a>)}</nav>
-          <div className="mt-3 grid grid-cols-2 gap-2"><Button variant="dragonOutline" disabled>Đăng nhập</Button><Button variant="dragon" disabled>Đăng ký</Button></div>
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">Đăng nhập/Đăng ký sắp kết nối.</p>
+           <div className="mt-3 grid grid-cols-2 gap-2"><Button variant="dragonOutline" onClick={() => openAuth("login")}>Đăng nhập</Button><Button variant="dragon" onClick={() => openAuth("register")}>Đăng ký</Button></div>
         </div>}
 
       </header>
+
+      <AuthPrototypeDialog open={authOpen} mode={authMode} onOpenChange={setAuthOpen} onModeChange={setAuthMode} />
 
       <main>
         <section id="trang-chu" className="scroll-mt-20 pt-16 lg:pt-20">
