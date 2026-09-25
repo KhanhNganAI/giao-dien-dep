@@ -62,7 +62,7 @@ Không sửa `src/routeTree.gen.ts` thủ công; TanStack sẽ sinh lại từ r
 - Modify: `src/integrations/supabase/types.ts` (sinh lại bằng Supabase CLI)
 
 **Interfaces:**
-- Migrations tạo `profiles`, `dragon_wallets`, `dragon_wallet_transactions`, `learning_progress`, `garden_slots`, `seed_inventory`, `seed_catalog`, `game_gifts`, `gift_redemptions`, `wallet_topups`.
+- Migrations tạo `profiles`, `dragon_wallets`, `dragon_wallet_transactions`, `learning_progress`, `garden_slots`, `seed_inventory`, `seed_catalog`, `game_gifts`, `gift_redemptions`.
 - Một user có một wallet và đúng 12 slot indices `1..12`.
 - Ledger chỉ ghi nối tiếp; browser không có quyền `INSERT`, `UPDATE`, `DELETE` vào wallet hoặc ledger.
 - Catalog cây được seed đúng bảng trong spec; catalog quà ban đầu có thể rỗng và phải có trạng thái rỗng rõ ràng cho tới khi admin cấu hình quà.
@@ -99,6 +99,7 @@ git commit -m "feat: add shared Dragon garden schema"
 **Files:**
 - Create: `supabase/migrations/202609250002_vuon_rong_transactions.sql`
 - Modify: `supabase/tests/vuon-rong.test.sql`
+- Modify: `src/integrations/supabase/types.ts` (sinh lại sau migration RPC)
 
 **Interfaces:**
 - `purchase_seed(p_seed_key text, p_quantity integer, p_idempotency_key uuid)` trừ Xu và cộng kho hạt nguyên tử.
@@ -142,6 +143,7 @@ git commit -m "feat: add atomic garden and wallet operations"
 - Create: `supabase/functions/sepay-webhook/index.ts`
 - Create: `supabase/functions/sepay-webhook/index.test.ts`
 - Modify: `supabase/tests/vuon-rong.test.sql`
+- Modify: `src/integrations/supabase/types.ts` (sinh lại sau migration topup)
 
 **Interfaces:**
 - `create_wallet_topup(p_bundle_id text, p_idempotency_key uuid)` chỉ cho user đã đăng nhập tạo order; trả `topup_id`, mã chuyển khoản duy nhất, giá VND, lượng Xu và expiry.
@@ -180,6 +182,7 @@ git commit -m "feat: add SePay wallet topups"
 **Files:**
 - Modify: `package.json`
 - Modify: `bun.lock`
+- Modify: `.prettierrc` (`endOfLine: "auto"` để hỗ trợ checkout CRLF trên Windows và LF trên Unix)
 - Create: `vitest.config.ts`
 - Create: `src/test/setup.ts`
 - Create: `src/integrations/supabase/auth-provider.tsx`
@@ -195,9 +198,9 @@ git commit -m "feat: add SePay wallet topups"
 - Public env dùng `VITE_SUPABASE_URL` và `VITE_SUPABASE_PUBLISHABLE_KEY`; server-only env tách riêng.
 - `returnTo` chỉ chấp nhận đường dẫn nội bộ bắt đầu bằng `/`; không chuyển hướng sang domain ngoài.
 
-- [ ] **Bước 1: Thêm test form đăng nhập/đăng ký**
+- [ ] **Bước 1: Cấu hình test runner và viết test form đăng nhập/đăng ký**
 
-Cài `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`; thêm script `"test": "vitest run"`, cấu hình jsdom trong `vitest.config.ts` và matcher setup trong `src/test/setup.ts`.
+Cài `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`; thêm script `"test": "vitest run"`, cấu hình jsdom trong `vitest.config.ts` và matcher setup trong `src/test/setup.ts`. Đặt Prettier `endOfLine` thành `auto`, xác nhận lint pass mà không format hàng loạt các file hiện có.
 
 Mock Supabase Auth và assert email/password tới đúng API, đăng ký yêu cầu họ tên/điều khoản, trạng thái pending khóa submit, lỗi auth hiển thị bằng tiếng Việt, đăng xuất xóa UI phiên.
 
@@ -218,7 +221,7 @@ Chạy test provider/dialog; chạy `bun run lint`. Mở trang chủ, xác nhậ
 `.env.example` chỉ liệt kê tên biến và giá trị placeholder; xác nhận `.env*` chứa credential vẫn ignore. Commit:
 
 ```bash
-git add src .env.example
+git add src .env.example .prettierrc package.json bun.lock vitest.config.ts
 git commit -m "feat: connect Dragon auth to shared Supabase"
 ```
 
