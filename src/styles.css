@@ -48,6 +48,10 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+  --color-success: var(--success);
+  --color-surface-raised: var(--surface-raised);
+  --color-fire: var(--fire);
+  --color-gold-soft: var(--gold-soft);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
