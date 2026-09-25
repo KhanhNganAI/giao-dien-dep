@@ -93,7 +93,43 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      purchase_seed: {
+        Args: { p_seed_key: string; p_quantity: number; p_idempotency_key: string };
+        Returns: Json;
+      };
+      plant_crop: {
+        Args: { p_slot_index: number; p_seed_key: string; p_idempotency_key: string };
+        Returns: Json;
+      };
+      plant_crops: {
+        Args: { p_slot_indices: number[]; p_seed_key: string; p_idempotency_key: string };
+        Returns: Json;
+      };
+      harvest_crop: {
+        Args: { p_slot_index: number; p_idempotency_key: string };
+        Returns: Json;
+      };
+      harvest_crops: {
+        Args: { p_slot_indices: number[]; p_idempotency_key: string };
+        Returns: Json;
+      };
+      exchange_seed: {
+        Args: { p_from_seed: string; p_to_seed: string; p_idempotency_key: string };
+        Returns: Json;
+      };
+      redeem_game_gift: {
+        Args: { p_gift_id: string; p_idempotency_key: string };
+        Returns: Json;
+      };
+      sync_learning_progress: {
+        Args: { p_user_id: string; p_completed_lessons: number; p_source_reference: string };
+        Returns: {
+          user_id: string;
+          completed_lessons: number;
+          source_reference: string | null;
+          updated_at: string;
+        };
+      };
     };
     Enums: {
       [_ in never]: never;
