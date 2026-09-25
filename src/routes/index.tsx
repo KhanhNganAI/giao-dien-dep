@@ -71,16 +71,19 @@ function Index() {
             {navItems.map(([label, href]) => <a key={href} href={href} className="rounded-md px-3 py-2 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground">{label}{label === "Khóa học" && <span className="ml-1 text-[9px] text-primary">MỚI</span>}</a>)}
           </nav>
           <div className="hidden items-center gap-2 md:flex xl:ml-2">
-            <div className="hidden items-center gap-2 rounded-md border border-primary/35 bg-muted/70 px-3 py-2 text-xs text-primary lg:flex"><Coins className="size-4" /> Đăng nhập để xem</div>
-            <Button variant="dragonOutline" size="sm">Đăng nhập</Button>
-            <Button variant="dragon" size="sm">Đăng ký</Button>
+            <div className="hidden items-center gap-2 rounded-md border border-primary/35 bg-muted/70 px-3 py-2 text-xs text-primary lg:flex"><Coins className="size-4" /> Ví Xu: Đăng nhập để xem</div>
+            <Button variant="dragonOutline" size="sm" disabled title="Tính năng đăng nhập sắp kết nối">Đăng nhập (sắp kết nối)</Button>
+            <Button variant="dragon" size="sm" disabled title="Tính năng đăng ký sắp kết nối">Đăng ký (sắp kết nối)</Button>
           </div>
           <Button variant="dragonOutline" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Đóng menu" : "Mở menu"}>{menuOpen ? <X /> : <Menu />}</Button>
         </div>
         {menuOpen && <div className="border-t border-border bg-background p-4 md:hidden">
+          <div className="mb-3 flex items-center gap-2 rounded-md border border-primary/35 bg-muted/70 px-3 py-2 text-xs text-primary"><Coins className="size-4" /> Ví Xu: Đăng nhập để xem</div>
           <nav className="grid gap-1">{navItems.map(([label, href]) => <a key={href} href={href} onClick={() => setMenuOpen(false)} className="flex items-center justify-between rounded-md px-3 py-3 text-sm hover:bg-muted">{label}<ChevronRight className="size-4 text-primary" /></a>)}</nav>
-          <div className="mt-3 grid grid-cols-2 gap-2"><Button variant="dragonOutline">Đăng nhập</Button><Button variant="dragon">Đăng ký</Button></div>
+          <div className="mt-3 grid grid-cols-2 gap-2"><Button variant="dragonOutline" disabled>Đăng nhập</Button><Button variant="dragon" disabled>Đăng ký</Button></div>
+          <p className="mt-2 text-center text-[11px] text-muted-foreground">Đăng nhập/Đăng ký sắp kết nối.</p>
         </div>}
+
       </header>
 
       <main>
@@ -130,7 +133,7 @@ function Index() {
         <section id="khoa-hoc" className="scroll-mt-20 py-16 sm:py-24"><div className="mx-auto max-w-5xl px-4 text-center"><Rocket className="mx-auto size-9 text-primary"/><p className="mt-5 text-xs font-bold uppercase text-primary">Đang hoàn thiện nội dung</p><h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">Khóa học sắp ra mắt</h2><p className="mx-auto mt-4 max-w-xl leading-7 text-muted-foreground">Những lộ trình mới đang được đội ngũ Dragon xây dựng để giúp bạn tiến xa hơn cùng AI.</p><Button variant="dragonOutline" className="mt-7" disabled>Chờ thông báo</Button></div></section>
       </main>
 
-      <footer className="border-t border-border bg-surface-raised/70"><div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 lg:px-8"><div className="flex items-center gap-3"><img src={logoAsset.url} alt="" className="size-12 rounded-full object-contain"/><div><p className="font-display text-lg font-bold text-primary">Dragon System 3</p><p className="text-xs text-muted-foreground">Khai phá trí tuệ • Dẫn lối tương lai</p></div></div><div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-muted-foreground sm:justify-end"><a href="mailto:contact@example.com">Liên hệ (cập nhật sau)</a><a href="#">Điều khoản (cập nhật sau)</a><span>© 2026 Dragon System 3</span></div></div></footer>
+      <footer className="border-t border-border bg-surface-raised/70"><div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:grid-cols-2 lg:px-8"><div className="flex items-center gap-3"><img src={logoAsset.url} alt="" className="size-12 rounded-full object-contain"/><div><p className="font-display text-lg font-bold text-primary">Dragon System 3</p><p className="text-xs text-muted-foreground">Khai phá trí tuệ • Dẫn lối tương lai</p></div></div><div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs text-muted-foreground sm:justify-end"><span>Thông tin liên hệ và điều khoản sẽ cập nhật</span><span>© 2026 Dragon System 3</span></div></div></footer>
     </div>
   );
 }
