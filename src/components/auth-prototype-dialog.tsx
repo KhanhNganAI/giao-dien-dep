@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/integrations/supabase/auth-provider";
 
 export type AuthMode = "login" | "register";
 
@@ -35,10 +36,14 @@ export function AuthPrototypeDialog({ open, mode, onOpenChange, onModeChange }: 
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [notice, setNotice] = useState("");
+  const [noticeIsError, setNoticeIsError] = useState(false);
+  const [pending, setPending] = useState(false);
+  const { signIn, signUp } = useAuth();
 
   const changeMode = (nextMode: AuthMode) => {
     setErrors({});
     setNotice("");
+    setNoticeIsError(false);
     onModeChange(nextMode);
   };
 
@@ -58,11 +63,35 @@ export function AuthPrototypeDialog({ open, mode, onOpenChange, onModeChange }: 
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setNotice("");
+    setNoticeIsError(false);
     if (!validate()) return;
-    setNotice("Tính năng xác thực sắp được kết nối");
+    setPending(true);
+    try {
+      if (mode === "login") {
+        await signIn(email, password);
+        setNotice("Đăng nhập thành công.");
+        onOpenChange(false);
+      } else {
+        const result = await signUp(name, email, password);
+        setNotice(result.needsEmailConfirmation
+          ? "Đăng ký thành công. Hãy mở email để xác nhận tài khoản trước khi đăng nhập."
+          : "Tạo tài khoản thành công.");
+        if (!result.needsEmailConfirmation) onOpenChange(false);
+      }
+    } catch (error) {
+      setNoticeIsError(true);
+      const message = error instanceof Error ? error.message : "Không thể xác thực lúc này. Vui lòng thử lại.";
+      setNotice(message.includes("Invalid login credentials")
+        ? "Email hoặc mật khẩu chưa chính xác."
+        : message.includes("User already registered")
+          ? "Email này đã có tài khoản. Hãy đăng nhập."
+          : message);
+    } finally {
+      setPending(false);
+    }
   };
 
   const showUpcomingNotice = () => {
@@ -149,15 +178,15 @@ export function AuthPrototypeDialog({ open, mode, onOpenChange, onModeChange }: 
               </>
             )}
 
-            {notice && <div role="status" className="flex items-start gap-2 rounded-md border border-primary/35 bg-primary/10 p-3 text-sm text-gold-soft"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" /><span>{notice}</span></div>}
+            {notice && <div role={noticeIsError ? "alert" : "status"} className={`flex items-start gap-2 rounded-md border p-3 text-sm ${noticeIsError ? "border-destructive/35 bg-destructive/10 text-destructive" : "border-primary/35 bg-primary/10 text-gold-soft"}`}><CheckCircle2 className="mt-0.5 size-4 shrink-0" /><span>{notice}</span></div>}
 
-            <Button type="submit" variant="dragon" size="lg" className="w-full">
-              {mode === "login" ? "Đăng nhập" : "Đăng ký"}
+            <Button type="submit" variant="dragon" size="lg" className="w-full" disabled={pending}>
+              {pending ? "Đang xử lý..." : mode === "login" ? "Đăng nhập" : "Đăng ký"}
             </Button>
           </form>
 
           <p className="mt-5 text-center text-xs text-muted-foreground">
-            Đây là giao diện mẫu. Thông tin không được gửi hoặc lưu trữ.
+            Tài khoản Dragon System 3 dùng chung cho các dịch vụ được kết nối.
           </p>
         </div>
       </DialogContent>

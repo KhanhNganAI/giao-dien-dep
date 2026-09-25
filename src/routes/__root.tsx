@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { AuthProvider } from "../integrations/supabase/auth-provider";
 
 function NotFoundComponent() {
   return (
@@ -24,6 +25,7 @@ function NotFoundComponent() {
         <div className="mt-6">
           <Link
             to="/"
+            search={{ auth: undefined, returnTo: undefined }}
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go home
@@ -78,7 +80,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "Dragon System 3" },
-      { name: "description", content: "Hệ sinh thái học kỹ năng và sử dụng công cụ AI dành cho cộng đồng KOL AI." },
+      {
+        name: "description",
+        content: "Hệ sinh thái học kỹ năng và sử dụng công cụ AI dành cho cộng đồng KOL AI.",
+      },
       { name: "author", content: "Dragon System 3" },
       { property: "og:title", content: "Dragon System 3" },
       { property: "og:description", content: "Khai phá trí tuệ • Dẫn lối tương lai" },
@@ -92,7 +97,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Rajdhani:wght@600;700&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Rajdhani:wght@600;700&display=swap",
+      },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
     ],
   }),
@@ -121,8 +129,10 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <AuthProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
