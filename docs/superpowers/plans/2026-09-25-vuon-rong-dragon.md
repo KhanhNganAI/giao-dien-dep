@@ -46,8 +46,9 @@
 - `src/features/wallet/*`: số dư, lịch sử giao dịch và luồng mua gói Xu/QR.
 - `public/game/*`: asset game đã cung cấp.
 - `vitest.config.ts`, `src/test/setup.ts`, `src/**/*.test.ts(x)`: test tương tác và quy tắc hiển thị.
+- `src/db/*.test.ts`: test migration, RLS và RPC bằng PGlite khi máy không có Docker.
 - `package.json`, `bun.lock`: script và dependency test.
-- `supabase/tests/vuon-rong.test.sql`: kiểm tra database, RLS và RPC trên Supabase local/test project.
+- PGlite tests trong `src/db`: thực thi migration PostgreSQL và kiểm tra RLS/RPC; xác minh thêm trên Supabase project khi triển khai.
 - `.env.example`: chỉ tên biến môi trường và URL mẫu không chứa bí mật.
 - `vite.config.ts` (nếu cần): adapter Nitro tương thích với mục tiêu Vercel sau khi build kiểm chứng.
 
@@ -57,9 +58,11 @@ Không sửa `src/routeTree.gen.ts` thủ công; TanStack sẽ sinh lại từ r
 
 **Files:**
 - Create: `supabase/migrations/202609250001_vuon_rong_core.sql`
-- Create: `supabase/tests/vuon-rong.test.sql`
+- Create: `src/db/vuon-rong-schema.test.ts`
 - Modify: `supabase/config.toml`
 - Modify: `src/integrations/supabase/types.ts` (sinh lại bằng Supabase CLI)
+- Modify: `package.json`, `bun.lock` (Vitest, Testing Library, PGlite)
+- Create: `vitest.config.ts`, `src/test/setup.ts`
 
 **Interfaces:**
 - Migrations tạo `profiles`, `dragon_wallets`, `dragon_wallet_transactions`, `learning_progress`, `garden_slots`, `seed_inventory`, `seed_catalog`, `game_gifts`, `gift_redemptions`.
@@ -67,13 +70,13 @@ Không sửa `src/routeTree.gen.ts` thủ công; TanStack sẽ sinh lại từ r
 - Ledger chỉ ghi nối tiếp; browser không có quyền `INSERT`, `UPDATE`, `DELETE` vào wallet hoặc ledger.
 - Catalog cây được seed đúng bảng trong spec; catalog quà ban đầu có thể rỗng và phải có trạng thái rỗng rõ ràng cho tới khi admin cấu hình quà.
 
-- [ ] **Bước 1: Viết SQL test thất bại cho khởi tạo dữ liệu và RLS**
+- [ ] **Bước 1: Cấu hình test runner và viết test schema thất bại**
 
-Trong `supabase/tests/vuon-rong.test.sql`, tạo hai auth user, chạy trigger khởi tạo, và assert mỗi user có một wallet cùng 12 ô. Giả lập JWT role/user qua `set_config('request.jwt.claim.sub', ...)`; assert user A không đọc được hàng user B và không thể sửa wallet/ledger.
+Thêm Vitest, Testing Library, jsdom và `@electric-sql/pglite`; thêm script `"test": "vitest run"`. Trong `src/db/vuon-rong-schema.test.ts`, khởi tạo PGlite với schema `auth`, bảng `auth.users` và hàm `auth.uid()` mô phỏng Supabase JWT claim. Viết test áp dụng migration rồi assert trigger tạo một wallet/12 ô, hai user tách biệt bởi RLS, và role `authenticated` không ghi được wallet/ledger.
 
 - [ ] **Bước 2: Chạy test và xác nhận thất bại trước migration**
 
-Chạy `supabase test db` trên Supabase local (Docker). Kết quả mong đợi: FAIL vì các bảng, trigger và policy chưa tồn tại.
+Chạy `bun run test -- src/db/vuon-rong-schema.test.ts`. Kết quả mong đợi: FAIL vì migration lõi chưa tồn tại hoặc chưa tạo bảng/policy.
 
 - [ ] **Bước 3: Viết migration lõi**
 
@@ -81,7 +84,7 @@ Thêm bảng, khóa ngoại, unique/check constraints, trigger tạo profile/wal
 
 - [ ] **Bước 4: Áp dụng migration và chạy database test**
 
-Chạy `supabase start`, `supabase db reset`, rồi `supabase test db`. Kết quả mong đợi: PASS; hai user cô lập dữ liệu và direct writes vào wallet/ledger bị chặn.
+Chạy `bun run test -- src/db/vuon-rong-schema.test.ts`. Kết quả mong đợi: PASS; hai user cô lập dữ liệu và direct writes vào wallet/ledger bị chặn. Nếu Docker/Supabase CLI có sẵn, chạy thêm `supabase db reset` và `supabase test db` như kiểm tra tương thích Supabase.
 
 - [ ] **Bước 5: Sinh types và kiểm tra migration**
 
@@ -90,7 +93,7 @@ Chạy `supabase gen types typescript --local` vào `src/integrations/supabase/t
 - [ ] **Bước 6: Commit task**
 
 ```bash
-git add supabase/config.toml supabase/migrations supabase/tests src/integrations/supabase/types.ts
+git add package.json bun.lock vitest.config.ts src/test src/db supabase/config.toml supabase/migrations src/integrations/supabase/types.ts
 git commit -m "feat: add shared Dragon garden schema"
 ```
 
@@ -98,7 +101,7 @@ git commit -m "feat: add shared Dragon garden schema"
 
 **Files:**
 - Create: `supabase/migrations/202609250002_vuon_rong_transactions.sql`
-- Modify: `supabase/tests/vuon-rong.test.sql`
+- Create: `src/db/vuon-rong-transactions.test.ts`
 - Modify: `src/integrations/supabase/types.ts` (sinh lại sau migration RPC)
 
 **Interfaces:**
@@ -113,11 +116,11 @@ git commit -m "feat: add shared Dragon garden schema"
 
 - [ ] **Bước 1: Thêm SQL test cho luật tiền và cây**
 
-Test gồm: mua hạt có số dư đủ/thiếu; mỗi loại cây chỉ được ở hàng phù hợp; gieo thiếu hạt; gieo lặp cùng idempotency key; harvest chưa chín; harvest chín; harvest lặp; đổi hạt; đổi quà thiếu tiền; pot threshold; snail timestamp.
+Trong PGlite test, apply migration lõi và transaction migration; test mua hạt đủ/thiếu Xu; mỗi loại cây đúng hàng; gieo thiếu hạt; retry cùng idempotency key; harvest chưa chín/chín/lặp; đổi hạt; đổi quà thiếu tiền; pot threshold; snail timestamp.
 
 - [ ] **Bước 2: Chạy test và xác nhận các RPC chưa tồn tại**
 
-Chạy `supabase test db`; kết quả mong đợi: FAIL ở các RPC chưa được tạo.
+Chạy `bun run test -- src/db/vuon-rong-transactions.test.ts`; kết quả mong đợi: FAIL ở các RPC chưa được tạo.
 
 - [ ] **Bước 3: Tạo RPC với khóa hàng và cập nhật ledger cùng transaction**
 
@@ -132,7 +135,7 @@ Kiểm tra mỗi thao tác được gọi lặp bằng cùng key chỉ ghi một
 Thu hồi execute từ `anon` cho mọi giao dịch; chỉ `authenticated` có thể gọi các RPC user-facing. Chạy test lại và commit:
 
 ```bash
-git add supabase/migrations supabase/tests
+git add supabase/migrations src/db src/integrations/supabase/types.ts
 git commit -m "feat: add atomic garden and wallet operations"
 ```
 
@@ -141,8 +144,9 @@ git commit -m "feat: add atomic garden and wallet operations"
 **Files:**
 - Create: `supabase/migrations/202609250003_wallet_topups.sql`
 - Create: `supabase/functions/sepay-webhook/index.ts`
-- Create: `supabase/functions/sepay-webhook/index.test.ts`
-- Modify: `supabase/tests/vuon-rong.test.sql`
+- Create: `src/features/wallet/sepay-handler.ts`
+- Create: `src/features/wallet/sepay-handler.test.ts`
+- Modify: `src/db/vuon-rong-transactions.test.ts`
 - Modify: `src/integrations/supabase/types.ts` (sinh lại sau migration topup)
 
 **Interfaces:**
@@ -158,7 +162,7 @@ Test 200 với API key hợp lệ và giao dịch tiền vào khớp order; 401 
 
 - [ ] **Bước 2: Chạy test webhook để xác nhận chúng thất bại ban đầu**
 
-Chạy `deno test supabase/functions/sepay-webhook/index.test.ts`; kỳ vọng FAIL khi handler chưa có.
+Chạy `bun run test -- src/features/wallet/sepay-handler.test.ts`; kỳ vọng FAIL vì handler chưa có.
 
 - [ ] **Bước 3: Thêm order topup và Edge Function**
 
@@ -166,7 +170,7 @@ Tạo order qua SQL function xác thực user; xác thực webhook bằng server
 
 - [ ] **Bước 4: Chạy test, thêm test database cho topup idempotency**
 
-Chạy Deno test và `supabase test db`. Kết quả mong đợi: event hợp lệ cộng đúng một lần, mọi trường hợp sai không tăng số dư.
+Chạy Edge Function handler test qua Vitest và `bun run test -- src/db/vuon-rong-transactions.test.ts`. Kết quả mong đợi: event hợp lệ cộng đúng một lần, mọi trường hợp sai không tăng số dư.
 
 - [ ] **Bước 5: Ghi hướng dẫn cấu hình sandbox và commit**
 
@@ -180,11 +184,7 @@ git commit -m "feat: add SePay wallet topups"
 ## Task 4: Supabase Auth thật cho Dragon
 
 **Files:**
-- Modify: `package.json`
-- Modify: `bun.lock`
 - Modify: `.prettierrc` (`endOfLine: "auto"` để hỗ trợ checkout CRLF trên Windows và LF trên Unix)
-- Create: `vitest.config.ts`
-- Create: `src/test/setup.ts`
 - Create: `src/integrations/supabase/auth-provider.tsx`
 - Create: `src/integrations/supabase/auth-provider.test.tsx`
 - Modify: `src/components/auth-prototype-dialog.tsx`
@@ -198,11 +198,10 @@ git commit -m "feat: add SePay wallet topups"
 - Public env dùng `VITE_SUPABASE_URL` và `VITE_SUPABASE_PUBLISHABLE_KEY`; server-only env tách riêng.
 - `returnTo` chỉ chấp nhận đường dẫn nội bộ bắt đầu bằng `/`; không chuyển hướng sang domain ngoài.
 
-- [ ] **Bước 1: Cấu hình test runner và viết test form đăng nhập/đăng ký**
+- [ ] **Bước 1: Viết test form đăng nhập/đăng ký**
 
-Cài `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom`; thêm script `"test": "vitest run"`, cấu hình jsdom trong `vitest.config.ts` và matcher setup trong `src/test/setup.ts`. Đặt Prettier `endOfLine` thành `auto`, xác nhận lint pass mà không format hàng loạt các file hiện có.
+Đặt Prettier `endOfLine` thành `auto`, xác nhận lint pass mà không format hàng loạt các file hiện có. Mock Supabase Auth và assert email/password tới đúng API, đăng ký yêu cầu họ tên/điều khoản, trạng thái pending khóa submit, lỗi auth hiển thị bằng tiếng Việt, đăng xuất xóa UI phiên.
 
-Mock Supabase Auth và assert email/password tới đúng API, đăng ký yêu cầu họ tên/điều khoản, trạng thái pending khóa submit, lỗi auth hiển thị bằng tiếng Việt, đăng xuất xóa UI phiên.
 
 - [ ] **Bước 2: Chạy test trước khi implement**
 
@@ -221,7 +220,7 @@ Chạy test provider/dialog; chạy `bun run lint`. Mở trang chủ, xác nhậ
 `.env.example` chỉ liệt kê tên biến và giá trị placeholder; xác nhận `.env*` chứa credential vẫn ignore. Commit:
 
 ```bash
-git add src .env.example .prettierrc package.json bun.lock vitest.config.ts
+git add src .env.example .prettierrc
 git commit -m "feat: connect Dragon auth to shared Supabase"
 ```
 
@@ -329,7 +328,7 @@ git commit -m "feat: add Vườn Rồng game route"
 
 - [ ] **Bước 1: Cài Supabase local và chạy tất cả database/frontend tests**
 
-Chạy `supabase start`, `supabase db reset`, `supabase test db`, `deno test supabase/functions/sepay-webhook/index.test.ts`, `bun run test`, `bun run lint`, `bun run build`. Mọi lệnh phải pass trước deploy.
+Chạy `bun run test`, `bun run lint`, `bun run build`. Nếu Docker/Supabase CLI có sẵn, chạy thêm `supabase start`, `supabase db reset`, `supabase test db`. Mọi test cục bộ phải pass trước deploy.
 
 - [ ] **Bước 2: Kiểm tra deployment adapter và preview**
 
