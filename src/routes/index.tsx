@@ -21,7 +21,7 @@ import { AuthPrototypeDialog, type AuthMode } from "@/components/auth-prototype-
 import logoAsset from "@/assets/dragon-system-3-logo.jpg.asset.json";
 import teamAsset from "@/assets/dragon-system-3-team.jpg.asset.json";
 
-export const THE_SKILL_URL = "";
+export const THE_SKILL_URL = "https://dragon-system-3-the-skill.vercel.app/";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -121,7 +121,7 @@ function Index() {
 
         <section id="the-skill" className="scroll-mt-20 py-16 sm:py-24">
           <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 lg:grid-cols-[1.1fr_.9fr] lg:px-8">
-            <div><p className="text-xs font-bold uppercase text-primary">Nền tảng kỹ năng</p><h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">The Skill</h2><p className="mt-5 max-w-2xl leading-7 text-muted-foreground">Cánh cửa dẫn tới thư viện skill chuyên sâu của Dragon System 3 — được xây dựng cho những người muốn biến AI thành năng lực làm việc thật.</p><div className="mt-7 flex items-center gap-3"><Button variant="dragon" disabled={!THE_SKILL_URL} asChild={Boolean(THE_SKILL_URL)}>{THE_SKILL_URL ? <a href={THE_SKILL_URL}>Mở The Skill <ArrowRight /></a> : <span>Sắp kết nối</span>}</Button><span className="text-xs text-muted-foreground">Trang riêng đang được chuẩn bị</span></div></div>
+            <div><p className="text-xs font-bold uppercase text-primary">Nền tảng kỹ năng</p><h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">The Skill</h2><p className="mt-5 max-w-2xl leading-7 text-muted-foreground">Cánh cửa dẫn tới thư viện skill chuyên sâu của Dragon System 3 — được xây dựng cho những người muốn biến AI thành năng lực làm việc thật.</p><div className="mt-7 flex items-center gap-3"><Button variant="dragon" asChild><a href={THE_SKILL_URL} target="_blank" rel="noopener noreferrer">Khám phá The Skill <ArrowRight /></a></Button></div></div>
             <div className="grid grid-cols-[120px_1fr] items-center gap-5 rounded-md border border-primary/30 bg-card p-5 sm:grid-cols-[180px_1fr] sm:p-7"><img src={logoAsset.url} alt="Biểu trưng KOL AI Dragon 3" className="w-full object-contain" /><div><p className="font-display text-2xl font-bold text-primary">Học để dẫn đầu</p><p className="mt-2 text-sm leading-6 text-muted-foreground">Kiến thức có lộ trình. Kỹ năng có ứng dụng. Tiến bộ có thể nhìn thấy.</p></div></div>
           </div>
         </section>
