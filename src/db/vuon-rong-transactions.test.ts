@@ -35,6 +35,7 @@ async function createDatabase() {
   for (const migrationName of [
     "202609250001_vuon_rong_core.sql",
     "202609250002_vuon_rong_transactions.sql",
+    "202609250003_wallet_topups.sql",
   ]) {
     await database.exec(readFileSync(resolve("supabase/migrations", migrationName), "utf8"));
   }
@@ -314,5 +315,171 @@ describe("Vườn Rồng wallet and game RPCs", () => {
       [userId],
     );
     expect(result.rows[0]?.completed_lessons).toBe(50);
+  });
+
+  it("creates a server-priced topup and credits a matching SePay event only once", async () => {
+    const database = await createDatabase();
+    const topup = await database.query<{
+      result: { topup_id: string; payment_code: string; amount_vnd: number; xu_amount: number };
+    }>("SELECT public.create_wallet_topup('xu-10000', $1) AS result", [idempotencyKey]);
+    const order = topup.rows[0]!.result;
+    const topupRetry = await database.query<{ result: typeof order }>(
+      "SELECT public.create_wallet_topup('xu-10000', $1) AS result",
+      [idempotencyKey],
+    );
+    expect(order).toMatchObject({ amount_vnd: 100000, xu_amount: 10000 });
+    expect(order.payment_code).toMatch(/^DRAGON[0-9A-F]{12}$/);
+    expect(topupRetry.rows[0]?.result).toEqual(order);
+
+    await database.exec("RESET ROLE; SET ROLE service_role");
+    const payload = {
+      id: 712345,
+      transferType: "in",
+      transferAmount: 100000,
+      code: order.payment_code,
+      referenceCode: "FT-SEPAY-712345",
+    };
+    const first = await database.query<{ result: { status: string; duplicate: boolean } }>(
+      `SELECT public.process_sepay_topup($1, $2, $3, $4, $5, $6, $7) AS result`,
+      [
+        payload.id,
+        payload.code,
+        payload.transferType,
+        payload.transferAmount,
+        payload.referenceCode,
+        "TEST-ACCOUNT",
+        "TEST-ACCOUNT",
+      ],
+    );
+    const retry = await database.query<{ result: { status: string; duplicate: boolean } }>(
+      `SELECT public.process_sepay_topup($1, $2, $3, $4, $5, $6, $7) AS result`,
+      [
+        payload.id,
+        payload.code,
+        payload.transferType,
+        payload.transferAmount,
+        payload.referenceCode,
+        "TEST-ACCOUNT",
+        "TEST-ACCOUNT",
+      ],
+    );
+    const state = await database.query<{
+      balance: number;
+      status: string;
+      transactions: number;
+      events: number;
+    }>(
+      `
+      SELECT dragon_wallets.balance, wallet_topups.status,
+             (SELECT count(*)::int FROM dragon_wallet_transactions WHERE transaction_type = 'topup') AS transactions,
+             (SELECT count(*)::int FROM sepay_webhook_events) AS events
+      FROM dragon_wallets
+      JOIN wallet_topups ON wallet_topups.user_id = dragon_wallets.user_id
+      WHERE dragon_wallets.user_id = $1 AND wallet_topups.id = $2
+    `,
+      [userId, order.topup_id],
+    );
+    expect(first.rows[0]?.result).toMatchObject({ status: "credited", duplicate: false });
+    expect(retry.rows[0]?.result).toMatchObject({ status: "duplicate", duplicate: true });
+    expect(state.rows[0]).toEqual({ balance: 10100, status: "paid", transactions: 1, events: 1 });
+  });
+
+  it("does not credit outgoing, unknown-code, or amount-mismatched transfers", async () => {
+    const database = await createDatabase();
+    const topup = await database.query<{ result: { topup_id: string; payment_code: string } }>(
+      "SELECT public.create_wallet_topup('xu-10000', $1) AS result",
+      [idempotencyKey],
+    );
+    const order = topup.rows[0]!.result;
+    await expect(
+      database.query("SELECT public.process_sepay_topup(800001, $1, 'in', 100000, NULL, 'TEST-ACCOUNT', 'TEST-ACCOUNT')", [
+        order.payment_code,
+      ]),
+    ).rejects.toThrow();
+    await expect(
+      database.query("UPDATE wallet_topups SET status = 'paid' WHERE id = $1", [order.topup_id]),
+    ).rejects.toThrow();
+    await database.exec("RESET ROLE; SET ROLE service_role");
+    const process = async (id: number, code: string | null, type: string, amount: number) =>
+      database.query<{ result: { status: string } }>(
+        "SELECT public.process_sepay_topup($1, $2, $3, $4, NULL, $5, 'TEST-ACCOUNT') AS result",
+        [id, code, type, amount, "TEST-ACCOUNT"],
+      );
+    await process(712346, order.payment_code, "out", 100000);
+    await process(712347, "DRAGONUNKNOWN000", "in", 100000);
+    await process(712348, order.payment_code, "in", 99000);
+    const state = await database.query<{
+      balance: number;
+      status: string;
+      credited: number;
+      events: number;
+    }>(
+      `
+      SELECT dragon_wallets.balance, wallet_topups.status,
+             (SELECT count(*)::int FROM dragon_wallet_transactions WHERE transaction_type = 'topup') AS credited,
+             (SELECT count(*)::int FROM sepay_webhook_events) AS events
+      FROM dragon_wallets
+      JOIN wallet_topups ON wallet_topups.user_id = dragon_wallets.user_id
+      WHERE dragon_wallets.user_id = $1 AND wallet_topups.id = $2
+    `,
+      [userId, order.topup_id],
+    );
+    expect(state.rows[0]).toEqual({ balance: 100, status: "review", credited: 0, events: 3 });
+  });
+
+  it("expires an overdue order without crediting Xu", async () => {
+    const database = await createDatabase();
+    const topup = await database.query<{ result: { topup_id: string; payment_code: string } }>(
+      "SELECT public.create_wallet_topup('xu-10000', $1) AS result",
+      [idempotencyKey],
+    );
+    const order = topup.rows[0]!.result;
+    await database.exec("RESET ROLE; SET ROLE service_role");
+    await database.query(
+      "UPDATE wallet_topups SET expires_at = now() - interval '1 second' WHERE id = $1",
+      [order.topup_id],
+    );
+    const response = await database.query<{ result: { status: string; credited: boolean } }>(
+      "SELECT public.process_sepay_topup(712349, $1, 'in', 100000, NULL, 'TEST-ACCOUNT', 'TEST-ACCOUNT') AS result",
+      [order.payment_code],
+    );
+    const state = await database.query<{ balance: number; status: string; credited: number }>(
+      `
+      SELECT dragon_wallets.balance, wallet_topups.status,
+             (SELECT count(*)::int FROM dragon_wallet_transactions WHERE transaction_type = 'topup') AS credited
+      FROM dragon_wallets JOIN wallet_topups USING (user_id)
+      WHERE dragon_wallets.user_id = $1 AND wallet_topups.id = $2
+    `,
+      [userId, order.topup_id],
+    );
+    expect(response.rows[0]?.result).toEqual({
+      status: "expired",
+      duplicate: false,
+      credited: false,
+    });
+    expect(state.rows[0]).toEqual({ balance: 100, status: "expired", credited: 0 });
+  });
+
+  it("does not credit a transfer received in a different bank account", async () => {
+    const database = await createDatabase();
+    const topup = await database.query<{ result: { topup_id: string; payment_code: string } }>(
+      "SELECT public.create_wallet_topup('xu-10000', $1) AS result",
+      [idempotencyKey],
+    );
+    const order = topup.rows[0]!.result;
+    await database.exec("RESET ROLE; SET ROLE service_role");
+    const result = await database.query<{ result: { status: string; credited: boolean } }>(
+      "SELECT public.process_sepay_topup(712350, $1, 'in', 100000, NULL, 'OTHER-ACCOUNT', 'TEST-ACCOUNT') AS result",
+      [order.payment_code],
+    );
+    const state = await database.query<{ balance: number; status: string; outcome: string }>(`
+      SELECT dragon_wallets.balance, wallet_topups.status, sepay_webhook_events.outcome
+      FROM dragon_wallets
+      JOIN wallet_topups ON wallet_topups.user_id = dragon_wallets.user_id
+      JOIN sepay_webhook_events ON sepay_webhook_events.topup_id = wallet_topups.id
+      WHERE dragon_wallets.user_id = $1 AND wallet_topups.id = $2
+    `, [userId, order.topup_id]);
+    expect(result.rows[0]?.result).toMatchObject({ status: "review_receiving_account_mismatch", credited: false });
+    expect(state.rows[0]).toEqual({ balance: 100, status: "pending", outcome: "review_receiving_account_mismatch" });
   });
 });

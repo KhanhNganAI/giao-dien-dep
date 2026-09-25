@@ -88,6 +88,20 @@ export type Database = {
         price_xu: number;
         created_at: string;
       }>;
+      wallet_topups: Table<{
+        id: string;
+        user_id: string;
+        bundle_id: string;
+        payment_code: string;
+        amount_vnd: number;
+        xu_amount: number;
+        status: string;
+        expires_at: string;
+        provider_transaction_id: number | null;
+        provider_reference: string | null;
+        created_at: string;
+        paid_at: string | null;
+      }>;
     };
     Views: {
       [_ in never]: never;
@@ -129,6 +143,22 @@ export type Database = {
           source_reference: string | null;
           updated_at: string;
         };
+      };
+      create_wallet_topup: {
+        Args: { p_bundle_id: string; p_idempotency_key: string };
+        Returns: Json;
+      };
+      process_sepay_topup: {
+        Args: {
+          p_transaction_id: number;
+          p_payment_code: string;
+          p_transfer_type: string;
+          p_transfer_amount: number;
+          p_provider_reference: string;
+          p_receiving_account: string;
+          p_expected_receiving_account: string;
+        };
+        Returns: Json;
       };
     };
     Enums: {
