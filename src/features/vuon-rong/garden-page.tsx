@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Coins, RefreshCw, Sprout } from "lucide-react";
+import { ArrowLeft, Coins, RefreshCw, Sparkles, Sprout, Zap } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { WalletBalance } from "../wallet/wallet-components";
 import { useWallet } from "../wallet/wallet-provider";
 import {
   buySeeds,
-  exchangeSeed,
+  buyFertilizer,
+  applyFertilizer,
   harvest,
   harvestAll,
   loadGarden,
@@ -17,32 +18,65 @@ import {
   type GardenSlot,
 } from "./garden-api";
 import { GardenActions } from "./garden-actions";
+import { GardenStore } from "./garden-store";
 import { GardenGrid } from "./garden-grid";
 import { GardenSidebar } from "./garden-sidebar";
-import { seedOrder } from "./seed-catalog";
+import { seedGrowthLabel, seedNames, seedOrder } from "./seed-catalog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function errorMessage(error: unknown) {
-  const raw = error instanceof Error ? error.message : "Đã xảy ra lỗi, vui lòng thử lại.";
+  const raw =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : error &&
+            typeof error === "object" &&
+            "message" in error &&
+            typeof error.message === "string"
+          ? error.message
+          : "";
   if (raw.includes("insufficient_balance")) return "Ví Xu không đủ để thực hiện thao tác này.";
   if (raw.includes("seed_not_in_inventory")) return "Kho giống chưa có hạt này. Hãy mua hạt trước.";
   if (raw.includes("bottom row only")) return "Loại cây này chỉ trồng được ở hàng dưới.";
   if (raw.includes("not_ready")) return "Cây vẫn đang lớn, chưa thể thu hoạch.";
-  return raw;
+  if (raw.includes("fertilizer_not_in_inventory"))
+    return "Kho chưa có bao phân này. Hãy mua trong Kho giống.";
+  if (raw.includes("fertilizer_limit")) return "Mỗi cây chỉ dùng tối đa 3 bao phân.";
+  if (raw.includes("crop_not_growing")) return "Chỉ có thể bón phân khi cây vẫn đang lớn.";
+  return raw || "Đã xảy ra lỗi, vui lòng thử lại.";
 }
 
 export function GardenPage() {
-  const { refresh: refreshWallet } = useWallet();
+  const { balance, refresh: refreshWallet } = useWallet();
   const [data, setData] = useState<GardenSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [plantingSlot, setPlantingSlot] = useState<GardenSlot | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<GardenSlot | null>(null);
   const [selectedSeedKey, setSelectedSeedKey] = useState<string>(seedOrder[0]);
   const inventory = useMemo(
     () =>
       Object.fromEntries((data?.inventory ?? []).map((stack) => [stack.seed_key, stack.quantity])),
     [data?.inventory],
+  );
+  const fertilizerInventory = useMemo(
+    () => ({
+      growth:
+        data?.fertilizerInventory.find((item) => item.fertilizer_type === "growth")?.quantity ?? 0,
+      bloom:
+        data?.fertilizerInventory.find((item) => item.fertilizer_type === "bloom")?.quantity ?? 0,
+    }),
+    [data?.fertilizerInventory],
   );
 
   const reload = useCallback(async () => {
@@ -92,33 +126,100 @@ export function GardenPage() {
     (slot) => slot.status !== "empty" && slot.ready_at && new Date(slot.ready_at).getTime() <= now,
   );
   const emptySlots = (data?.slots ?? []).filter(
-    (slot) => slot.status === "empty" && (!selectedSeed?.bottom_row_only || slot.slot_index >= 9),
+    (slot) => slot.status === "empty" && (!selectedSeed?.bottom_row_only || slot.slot_index >= 7),
   );
 
   const handleSlot = (slot: GardenSlot) => {
     if (slot.status === "empty") {
-      if (!selectedSeedKey) return setError("Vườn chưa có hạt giống nào trong danh mục.");
-      if ((inventory[selectedSeedKey] ?? 0) < 1)
-        return setError("Kho chưa có hạt đã chọn. Mua hạt ở thanh hành động bên dưới.");
-      void act(
-        () => plant(slot.slot_index, selectedSeedKey),
-        `Đã gieo ${selectedSeed?.display_name ?? "hạt giống"} ở ô ${slot.slot_index}.`,
-      );
+      setPlantingSlot(slot);
       return;
     }
-    if (slot.ready_at && new Date(slot.ready_at).getTime() <= Date.now()) {
-      void act(
-        async () => {
-          return harvest(slot.slot_index);
-        },
-        (result) =>
-          `Thu hoạch thành công · nhận ${(result as { reward_total?: number } | null)?.reward_total ?? 0} Xu.`,
+    setSelectedSlot(slot);
+  };
+
+  const plantSelectedSeed = (seedKey: string) => {
+    if (!plantingSlot) return;
+    const slotIndex = plantingSlot.slot_index;
+    const seed = data?.seeds.find((item) => item.seed_key === seedKey);
+    if (!seed || (inventory[seedKey] ?? 0) < 1) return;
+    if (seed.bottom_row_only && slotIndex < 7) return;
+    void act(
+      () => plant(slotIndex, seedKey),
+      `Đã gieo ${seed.display_name} ở ô ${slotIndex}.`,
+    ).then((result) => {
+      if (result) setPlantingSlot(null);
+    });
+  };
+
+  const selectedSlotSeed = selectedSlot?.seed_key
+    ? data?.seeds.find((seed) => seed.seed_key === selectedSlot.seed_key)
+    : undefined;
+  const selectedSlotReady = Boolean(
+    selectedSlot?.ready_at && new Date(selectedSlot.ready_at).getTime() <= now,
+  );
+  const selectedSlotRemaining = selectedSlot?.ready_at
+    ? Math.max(0, Math.ceil((new Date(selectedSlot.ready_at).getTime() - now) / 1000))
+    : 0;
+  const selectedSlotProgress =
+    selectedSlot?.planted_at && selectedSlot?.ready_at
+      ? Math.min(
+          100,
+          Math.max(
+            0,
+            Math.floor(
+              ((now - new Date(selectedSlot.planted_at).getTime()) /
+                (new Date(selectedSlot.ready_at).getTime() -
+                  new Date(selectedSlot.planted_at).getTime())) *
+                100,
+            ),
+          ),
+        )
+      : 0;
+  const selectedSlotTime =
+    selectedSlotRemaining >= 86400
+      ? `${Math.floor(selectedSlotRemaining / 86400)} ngày ${Math.floor((selectedSlotRemaining % 86400) / 3600)} giờ`
+      : selectedSlotRemaining >= 3600
+        ? `${Math.floor(selectedSlotRemaining / 3600)} giờ ${Math.floor((selectedSlotRemaining % 3600) / 60)} phút`
+        : `${Math.floor(selectedSlotRemaining / 60)} phút ${selectedSlotRemaining % 60} giây`;
+
+  const harvestSelected = () => {
+    if (!selectedSlot) return;
+    const slotIndex = selectedSlot.slot_index;
+    void act(
+      () => harvest(slotIndex),
+      (result) =>
+        `Thu hoạch thành công · nhận ${(result as { reward_total?: number } | null)?.reward_total ?? 0} Xu.`,
+    ).then((result) => {
+      if (result) setSelectedSlot(null);
+    });
+  };
+
+  const fertilizeSelected = (type: "growth" | "bloom") => {
+    if (!selectedSlot) return;
+    const slotIndex = selectedSlot.slot_index;
+    void act(
+      () => applyFertilizer(slotIndex, type),
+      type === "growth"
+        ? "Đã bón Phân Tăng Trưởng, thời gian còn lại giảm 10%."
+        : "Đã bón Phân Dưỡng Hoa, cây nhận thêm 2% Xu khi thu hoạch.",
+    ).then((result) => {
+      if (!result || typeof result !== "object") return;
+      const updated = result as {
+        ready_at?: string;
+        fertilizer_uses?: number;
+        bloom_bonus_count?: number;
+      };
+      setSelectedSlot((current) =>
+        current
+          ? {
+              ...current,
+              ready_at: updated.ready_at ?? current.ready_at,
+              fertilizer_uses: updated.fertilizer_uses ?? current.fertilizer_uses,
+              bloom_bonus_count: updated.bloom_bonus_count ?? current.bloom_bonus_count,
+            }
+          : current,
       );
-      return;
-    }
-    setNotice(
-      `Cây đang lớn${slot.snail_attacked ? " và bị ốc sên làm chậm 10%" : ""}. Hãy quay lại khi bộ đếm kết thúc.`,
-    );
+    });
   };
 
   const handleMassPlant = () => {
@@ -152,6 +253,24 @@ export function GardenPage() {
         className="pointer-events-none absolute -left-5 top-40 hidden h-[80vh] w-16 object-cover opacity-50 xl:block"
       />
       <div className="relative mx-auto max-w-[1600px] px-3 pb-8 pt-4 sm:px-6 lg:px-8">
+        <section
+          aria-label="Đội ngũ KOL AI Dragon 3"
+          className="mb-4 overflow-hidden rounded-xl border border-amber-300/25 bg-slate-950/80 shadow-lg"
+        >
+          <div className="relative h-32 overflow-hidden sm:h-36 lg:h-48">
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 scale-110 bg-cover bg-center opacity-45 blur-md"
+              style={{ backgroundImage: "url('/game/dragon-team-banner.jpg')" }}
+            />
+            <div aria-hidden="true" className="absolute inset-0 bg-slate-950/15" />
+            <img
+              src="/game/dragon-team-banner.jpg"
+              alt="Đội ngũ KOL AI Dragon 3"
+              className="relative z-10 mx-auto h-full w-auto max-w-full object-contain"
+            />
+          </div>
+        </section>
         <header className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200/10 bg-slate-950/70 p-3 backdrop-blur-md">
           <a
             href="/"
@@ -162,8 +281,8 @@ export function GardenPage() {
           </a>
           <div className="flex items-center gap-2">
             <img
-              src="/game/kol-ai-logo.webp"
-              alt="KOL AI"
+              src="/game/dragon-system-3-logo.jpg"
+              alt="Logo Dragon System 3"
               className="size-10 rounded-full object-cover"
             />
             <div>
@@ -182,6 +301,25 @@ export function GardenPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <WalletBalance />
+            {data && (
+              <GardenStore
+                seeds={data.seeds}
+                inventory={inventory}
+                fertilizerInventory={fertilizerInventory}
+                busy={busy}
+                error={error}
+                onBuySeed={(key, quantity) => {
+                  setSelectedSeedKey(key);
+                  void act(() => buySeeds(key, quantity), "Đã mua hạt và trừ Xu trong ví Dragon.");
+                }}
+                onBuyFertilizer={(type, quantity) =>
+                  void act(
+                    () => buyFertilizer(type, quantity),
+                    "Đã mua phân bón và trừ Xu trong ví Dragon.",
+                  )
+                }
+              />
+            )}
             <a href="/#nap-xu">
               <Button variant="dragonOutline" size="sm">
                 <Coins className="size-4" />
@@ -191,13 +329,8 @@ export function GardenPage() {
           </div>
         </header>
 
-        <section className="mb-5 overflow-hidden rounded-xl border border-amber-300/20 bg-slate-950/60">
-          <img
-            src="/game/hero-banner.webp"
-            alt="Huyền thoại KOL AI"
-            className="max-h-36 w-full object-cover object-center sm:max-h-48"
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+        <section className="mb-5 rounded-xl border border-amber-300/20 bg-slate-950/60 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="font-display text-xl font-bold text-sky-100 sm:text-2xl">
                 Khu vườn của bạn
@@ -258,8 +391,6 @@ export function GardenPage() {
                 seeds={data.seeds}
                 lessons={data.completedLessons}
                 now={now}
-                inventory={inventory}
-                selectedSeedKey={selectedSeedKey}
                 busy={busy}
                 onSlotClick={handleSlot}
               />
@@ -268,12 +399,6 @@ export function GardenPage() {
                 inventory={inventory}
                 selectedSeedKey={selectedSeedKey}
                 onSelectSeed={setSelectedSeedKey}
-                onBuy={(key, quantity) =>
-                  void act(() => buySeeds(key, quantity), "Đã mua hạt và trừ Xu trong ví Dragon.")
-                }
-                onExchange={(from, to) =>
-                  void act(() => exchangeSeed(from, to), "Đã đổi hạt giống trong kho.")
-                }
                 onPlantAll={handleMassPlant}
                 onHarvestAll={handleMassHarvest}
                 busy={busy}
@@ -295,6 +420,192 @@ export function GardenPage() {
           Ví Xu, tiến độ và vườn dùng chung tài khoản Dragon.
         </footer>
       </div>
+      <Dialog open={Boolean(plantingSlot)} onOpenChange={(open) => !open && setPlantingSlot(null)}>
+        <DialogContent className="max-h-[88vh] max-w-2xl overflow-y-auto border-sky-200/20 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle className="font-display text-2xl text-sky-100">Trồng cây</DialogTitle>
+            <DialogDescription className="text-slate-300">
+              Ô {plantingSlot?.slot_index} ·{" "}
+              {plantingSlot && plantingSlot.slot_index <= 6 ? "hàng trên" : "hàng dưới"}
+              {" · chọn hạt đã mua trong kho · bạn có "}
+              {balance === null ? "—" : balance.toLocaleString("vi-VN")} Xu
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {[...(data?.seeds ?? [])]
+              .sort(
+                (a, b) =>
+                  seedOrder.indexOf(a.seed_key as (typeof seedOrder)[number]) -
+                  seedOrder.indexOf(b.seed_key as (typeof seedOrder)[number]),
+              )
+              .map((seed) => {
+                const quantity = inventory[seed.seed_key] ?? 0;
+                const lowerRowOnly = seed.bottom_row_only && (plantingSlot?.slot_index ?? 0) < 7;
+                const profitMin = seed.reward_min - seed.price_xu;
+                const profitMax = seed.reward_max - seed.price_xu;
+                const cropName =
+                  seedNames[seed.seed_key as keyof typeof seedNames] ?? seed.display_name;
+                return (
+                  <button
+                    key={seed.seed_key}
+                    type="button"
+                    disabled={busy || quantity < 1 || lowerRowOnly}
+                    aria-label={`Chọn ${cropName}, còn ${quantity} hạt, giá ${seed.price_xu} Xu${lowerRowOnly ? ", chỉ trồng hàng dưới" : ""}`}
+                    onClick={() => plantSelectedSeed(seed.seed_key)}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-900/80 p-3 text-left transition hover:border-emerald-300/40 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35 sm:p-4"
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span
+                        aria-hidden="true"
+                        className="grid size-10 shrink-0 place-items-center rounded-lg bg-slate-800 text-xl"
+                      >
+                        {seed.seed_key === "red-rose"
+                          ? "🌹"
+                          : seed.seed_key === "purple-flower"
+                            ? "🪻"
+                            : seed.seed_key === "yellow-rose"
+                              ? "🌼"
+                              : seed.seed_key === "apple"
+                                ? "🍎"
+                                : seed.seed_key === "pear"
+                                  ? "🍐"
+                                  : seed.seed_key === "purple-rose"
+                                    ? "🌷"
+                                    : "🌸"}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2 font-semibold text-slate-100">
+                          {cropName}
+                          {seed.bottom_row_only && (
+                            <span className="text-xs text-amber-300">Chỉ hàng dưới</span>
+                          )}
+                          <span className="rounded-full bg-emerald-400/15 px-2 py-0.5 text-xs text-emerald-200">
+                            Kho: {quantity} hạt
+                          </span>
+                        </span>
+                        <span className="mt-1 block text-xs text-slate-400 sm:text-sm">
+                          {seedGrowthLabel(seed)} · thu {seed.reward_min}–{seed.reward_max} Xu ·{" "}
+                          <b className="text-emerald-300">
+                            lời +{profitMin}–{profitMax}
+                          </b>
+                          {lowerRowOnly && " · Ô này thuộc hàng trên"}
+                          {quantity < 1 && " · Bạn chưa có hạt này trong kho"}
+                        </span>
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-sm font-bold text-amber-300">
+                      {seed.price_xu} Xu
+                    </span>
+                  </button>
+                );
+              })}
+          </div>
+          <Button
+            variant="dragonOutline"
+            className="w-full sm:w-auto"
+            onClick={() => setPlantingSlot(null)}
+          >
+            Hủy
+          </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={Boolean(selectedSlot)} onOpenChange={(open) => !open && setSelectedSlot(null)}>
+        <DialogContent className="max-w-md border-sky-200/20 bg-slate-950 text-white">
+          <DialogHeader>
+            <DialogTitle className="font-display text-xl text-sky-100">
+              {selectedSlotSeed?.display_name ?? "Chậu cây"} · Ô {selectedSlot?.slot_index}
+            </DialogTitle>
+            <DialogDescription className="text-slate-300">
+              {selectedSlotReady
+                ? "Cây đã trưởng thành và sẵn sàng thu hoạch."
+                : `Còn khoảng ${selectedSlotTime} để thu hoạch.`}
+              {selectedSlot?.snail_attacked &&
+                !selectedSlotReady &&
+                " Ốc sên làm chậm quá trình lớn thêm 10%."}
+            </DialogDescription>
+          </DialogHeader>
+          {error && (
+            <p
+              role="alert"
+              className="rounded-lg border border-rose-400/30 bg-rose-950/60 p-3 text-sm text-rose-100"
+            >
+              {error}
+            </p>
+          )}
+          <div className="rounded-lg border border-sky-200/15 bg-slate-900/80 p-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-300">Tiến độ sinh trưởng</span>
+              <span className="font-semibold text-sky-200">
+                {selectedSlotReady ? "100%" : `${selectedSlotProgress}%`}
+              </span>
+            </div>
+            <div
+              className="mt-3 h-2 overflow-hidden rounded-full bg-slate-700"
+              role="progressbar"
+              aria-label="Tiến độ sinh trưởng"
+              aria-valuenow={selectedSlotReady ? 100 : selectedSlotProgress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-sky-300 transition-all"
+                style={{ width: `${selectedSlotReady ? 100 : selectedSlotProgress}%` }}
+              />
+            </div>
+            {selectedSlotSeed && (
+              <p className="mt-3 text-sm text-slate-300">
+                Thu hoạch từ{" "}
+                <b className="text-amber-200">
+                  {selectedSlotSeed.reward_min}–{selectedSlotSeed.reward_max} Xu
+                </b>
+              </p>
+            )}
+          </div>
+          <div className="rounded-lg border border-amber-200/15 bg-slate-900/80 p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="font-semibold text-amber-100">Phân bón cho cây</p>
+              <p className="text-xs text-slate-400">
+                Đã dùng {selectedSlot?.fertilizer_uses ?? 0}/3
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Button
+                variant="dragonOutline"
+                disabled={
+                  busy ||
+                  selectedSlotReady ||
+                  (selectedSlot?.fertilizer_uses ?? 0) >= 3 ||
+                  fertilizerInventory.growth < 1
+                }
+                onClick={() => fertilizeSelected("growth")}
+              >
+                <Zap className="size-4" /> Tăng trưởng · còn {fertilizerInventory.growth}
+              </Button>
+              <Button
+                variant="dragonOutline"
+                disabled={
+                  busy ||
+                  selectedSlotReady ||
+                  (selectedSlot?.fertilizer_uses ?? 0) >= 3 ||
+                  fertilizerInventory.bloom < 1
+                }
+                onClick={() => fertilizeSelected("bloom")}
+              >
+                <Sparkles className="size-4" /> Dưỡng hoa · còn {fertilizerInventory.bloom}
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Mỗi cây dùng tối đa 3 bao phân: tăng trưởng giảm 10% thời gian còn lại, dưỡng hoa cộng
+              2% Xu khi thu hoạch.
+            </p>
+          </div>
+          {selectedSlotReady && (
+            <Button variant="dragon" disabled={busy} onClick={harvestSelected}>
+              <Coins className="size-4" /> Thu hoạch ô {selectedSlot?.slot_index}
+            </Button>
+          )}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

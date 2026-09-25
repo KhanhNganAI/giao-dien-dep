@@ -63,12 +63,20 @@ export type Database = {
         planted_at: string | null;
         ready_at: string | null;
         snail_attacked: boolean;
+        fertilizer_uses: number;
+        bloom_bonus_count: number;
         created_at: string;
         updated_at: string;
       }>;
       seed_inventory: Table<{
         user_id: string;
         seed_key: string;
+        quantity: number;
+        updated_at: string;
+      }>;
+      fertilizer_inventory: Table<{
+        user_id: string;
+        fertilizer_type: string;
         quantity: number;
         updated_at: string;
       }>;
@@ -111,6 +119,14 @@ export type Database = {
         Args: { p_seed_key: string; p_quantity: number; p_idempotency_key: string };
         Returns: Json;
       };
+      purchase_fertilizer: {
+        Args: { p_fertilizer_type: string; p_quantity: number; p_idempotency_key: string };
+        Returns: Json;
+      };
+      apply_fertilizer: {
+        Args: { p_slot_index: number; p_fertilizer_type: string; p_idempotency_key: string };
+        Returns: Json;
+      };
       plant_crop: {
         Args: { p_slot_index: number; p_seed_key: string; p_idempotency_key: string };
         Returns: Json;
@@ -125,10 +141,6 @@ export type Database = {
       };
       harvest_crops: {
         Args: { p_slot_indices: number[]; p_idempotency_key: string };
-        Returns: Json;
-      };
-      exchange_seed: {
-        Args: { p_from_seed: string; p_to_seed: string; p_idempotency_key: string };
         Returns: Json;
       };
       redeem_game_gift: {

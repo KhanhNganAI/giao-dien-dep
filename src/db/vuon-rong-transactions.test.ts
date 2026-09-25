@@ -36,6 +36,8 @@ async function createDatabase() {
     "202609250001_vuon_rong_core.sql",
     "202609250002_vuon_rong_transactions.sql",
     "202609250003_wallet_topups.sql",
+    "202609250004_garden_ui_wallet_adjustment.sql",
+    "202609250005_garden_store_fertilizers.sql",
   ]) {
     await database.exec(readFileSync(resolve("supabase/migrations", migrationName), "utf8"));
   }
@@ -83,7 +85,116 @@ describe("Vườn Rồng wallet and game RPCs", () => {
     expect(state.rows[0]).toEqual({ balance: 85, quantity: 3, entries: 1 });
   });
 
-  it("prevents premium crops in the upper rows and consumes inventory only when planting succeeds", async () => {
+  it("sells fertilizer in server-priced packs and records an idempotent wallet purchase", async () => {
+    const database = await createDatabase();
+    const first = await database.query<{
+      result: { balance: number; quantity: number; total_price: number };
+    }>("SELECT public.purchase_fertilizer('growth', 5, $1) AS result", [idempotencyKey]);
+    const retry = await database.query<{
+      result: { balance: number; quantity: number; total_price: number };
+    }>("SELECT public.purchase_fertilizer('growth', 5, $1) AS result", [idempotencyKey]);
+    const ledger = await database.query<{ transaction_type: string; amount: number }>(
+      "SELECT transaction_type, amount FROM dragon_wallet_transactions WHERE user_id = $1",
+      [userId],
+    );
+    expect(first.rows[0]?.result).toMatchObject({ balance: 70, quantity: 5, total_price: 30 });
+    expect(retry.rows[0]?.result).toEqual(first.rows[0]?.result);
+    expect(ledger.rows).toEqual([{ transaction_type: "fertilizer_purchase", amount: -30 }]);
+  });
+
+  it("applies growth fertilizer to remaining time and caps each crop at three applications", async () => {
+    const database = await createDatabase();
+    await database.exec("SET ROLE service_role");
+    await database.query(
+      "INSERT INTO fertilizer_inventory (user_id, fertilizer_type, quantity) VALUES ($1, 'growth', 4)",
+      [userId],
+    );
+    await database.query(
+      `UPDATE garden_slots SET seed_key = 'red-rose', status = 'growing', planted_at = now(), ready_at = now() + interval '10 hours'
+       WHERE user_id = $1 AND slot_index = 1`,
+      [userId],
+    );
+    await database.exec("RESET ROLE; SET ROLE authenticated");
+    const before = await database.query<{ ready_at: Date }>(
+      "SELECT ready_at FROM garden_slots WHERE user_id = $1 AND slot_index = 1",
+      [userId],
+    );
+    for (let index = 0; index < 3; index += 1) {
+      await database.query("SELECT public.apply_fertilizer(1, 'growth', $1)", [
+        `90000000-0000-4000-8000-00000000000${index + 1}`,
+      ]);
+    }
+    await expect(
+      database.query("SELECT public.apply_fertilizer(1, 'growth', $1)", [
+        "90000000-0000-4000-8000-000000000004",
+      ]),
+    ).rejects.toThrow(/fertilizer_limit/);
+    const state = await database.query<{
+      fertilizer_uses: number;
+      ready_at: Date;
+      quantity: number;
+    }>(
+      `SELECT garden.fertilizer_uses, garden.ready_at, inventory.quantity
+       FROM garden_slots garden JOIN fertilizer_inventory inventory USING (user_id)
+       WHERE garden.user_id = $1 AND garden.slot_index = 1 AND inventory.fertilizer_type = 'growth'`,
+      [userId],
+    );
+    const beforeRemaining = before.rows[0]!.ready_at.getTime() - Date.now();
+    const afterRemaining = state.rows[0]!.ready_at.getTime() - Date.now();
+    expect(state.rows[0]?.fertilizer_uses).toBe(3);
+    expect(state.rows[0]?.quantity).toBe(1);
+    expect(afterRemaining / beforeRemaining).toBeCloseTo(0.729, 1);
+  });
+
+  it("adds two percent harvest bonus per flower fertilizer and resets it for the next crop", async () => {
+    const database = await createDatabase();
+    await database.exec("SET ROLE service_role");
+    await database.query(
+      "INSERT INTO fertilizer_inventory (user_id, fertilizer_type, quantity) VALUES ($1, 'bloom', 3)",
+      [userId],
+    );
+    await database.query(
+      `UPDATE garden_slots SET seed_key = 'red-rose', status = 'growing', planted_at = now() - interval '3 hours',
+         ready_at = now() + interval '1 hour' WHERE user_id = $1 AND slot_index = 1`,
+      [userId],
+    );
+    await database.exec("RESET ROLE; SET ROLE authenticated");
+    for (let index = 0; index < 3; index += 1) {
+      await database.query("SELECT public.apply_fertilizer(1, 'bloom', $1)", [
+        `80000000-0000-4000-8000-00000000000${index + 1}`,
+      ]);
+    }
+    await database.exec("RESET ROLE; SET ROLE service_role");
+    await database.query(
+      "UPDATE garden_slots SET ready_at = now() - interval '1 hour' WHERE user_id = $1 AND slot_index = 1",
+      [userId],
+    );
+    await database.exec("RESET ROLE; SET ROLE authenticated");
+    const response = await database.query<{
+      result: {
+        results: Array<{
+          base_reward: number;
+          bonus_percent: number;
+          fertilizer_bonus_percent: number;
+          reward: number;
+        }>;
+      };
+    }>("SELECT public.harvest_crop(1, $1) AS result", [idempotencyKey]);
+    const state = await database.query<{
+      fertilizer_uses: number;
+      bloom_bonus_count: number;
+      status: string;
+    }>(
+      "SELECT fertilizer_uses, bloom_bonus_count, status FROM garden_slots WHERE user_id = $1 AND slot_index = 1",
+      [userId],
+    );
+    const harvest = response.rows[0]!.result.results[0]!;
+    expect(harvest).toMatchObject({ bonus_percent: 5, fertilizer_bonus_percent: 6 });
+    expect(harvest.reward).toBe(Math.floor(harvest.base_reward * 1.11));
+    expect(state.rows[0]).toEqual({ fertilizer_uses: 0, bloom_bonus_count: 0, status: "empty" });
+  });
+
+  it("allows bottom-row-only crops in slots 7–12 and consumes inventory only when planting succeeds", async () => {
     const database = await createDatabase();
     await database.exec("SET ROLE service_role");
     await database.query(
@@ -93,7 +204,7 @@ describe("Vườn Rồng wallet and game RPCs", () => {
     await database.exec("RESET ROLE; SET ROLE authenticated");
 
     await expect(
-      database.query("SELECT public.plant_crop(1, 'orchid', $1)", [idempotencyKey]),
+      database.query("SELECT public.plant_crop(6, 'orchid', $1)", [idempotencyKey]),
     ).rejects.toThrow(/bottom row/i);
     const inventory = await database.query<{ quantity: number }>(
       "SELECT quantity FROM seed_inventory WHERE user_id = $1 AND seed_key = 'orchid'",
@@ -103,18 +214,18 @@ describe("Vườn Rồng wallet and game RPCs", () => {
 
     const planted = await database.query<{
       result: { slot_index: number; snail_attacked: boolean };
-    }>("SELECT public.plant_crop(9, 'orchid', $1) AS result", [idempotencyKey]);
+    }>("SELECT public.plant_crop(7, 'orchid', $1) AS result", [idempotencyKey]);
     const retry = await database.query<{ result: { slot_index: number; snail_attacked: boolean } }>(
-      "SELECT public.plant_crop(9, 'orchid', $1) AS result",
+      "SELECT public.plant_crop(7, 'orchid', $1) AS result",
       [idempotencyKey],
     );
     const slot = await database.query<{ ready_at: Date; planted_at: Date; status: string }>(
-      "SELECT ready_at, planted_at, status FROM garden_slots WHERE user_id = $1 AND slot_index = 9",
+      "SELECT ready_at, planted_at, status FROM garden_slots WHERE user_id = $1 AND slot_index = 7",
       [userId],
     );
     const growthHours =
       (slot.rows[0]!.ready_at.getTime() - slot.rows[0]!.planted_at.getTime()) / 3_600_000;
-    expect(planted.rows[0]?.result.slot_index).toBe(9);
+    expect(planted.rows[0]?.result.slot_index).toBe(7);
     expect(retry.rows[0]?.result).toEqual(planted.rows[0]?.result);
     expect(growthHours).toBeGreaterThanOrEqual(48);
     expect(growthHours).toBeLessThanOrEqual(52.8);
@@ -195,7 +306,7 @@ describe("Vườn Rồng wallet and game RPCs", () => {
     expect(plantedSlots.rows).toEqual([{ slot_index: 1, status: "growing" }]);
   });
 
-  it("exchanges seeds at catalog prices and redeems a gift in one wallet transaction", async () => {
+  it("removes seed exchange while preserving gift redemption", async () => {
     const database = await createDatabase();
     await database.exec("SET ROLE service_role");
     await database.query(
@@ -207,10 +318,9 @@ describe("Vườn Rồng wallet and game RPCs", () => {
     );
     await database.exec("RESET ROLE; SET ROLE authenticated");
 
-    const exchanged = await database.query<{ result: { balance: number; wallet_delta: number } }>(
-      "SELECT public.exchange_seed('red-rose', 'orchid', $1) AS result",
-      [idempotencyKey],
-    );
+    await expect(
+      database.query("SELECT public.exchange_seed('red-rose', 'orchid', $1)", [idempotencyKey]),
+    ).rejects.toThrow();
     const redeemed = await database.query<{ result: { balance: number; redemption_id: string } }>(
       "SELECT public.redeem_game_gift($1, $2) AS result",
       [gift.rows[0]!.id, "90000000-0000-4000-8000-000000000002"],
@@ -219,15 +329,35 @@ describe("Vườn Rồng wallet and game RPCs", () => {
       "SELECT count(*)::int AS count FROM gift_redemptions WHERE user_id = $1",
       [userId],
     );
-    expect(exchanged.rows[0]?.result).toEqual({
-      balance: 75,
-      from_seed: "red-rose",
-      to_seed: "orchid",
-      wallet_delta: -25,
-      from_quantity: 0,
-    });
-    expect(redeemed.rows[0]?.result.balance).toBe(65);
+    expect(redeemed.rows[0]?.result.balance).toBe(90);
     expect(retry.rows[0]?.count).toBe(1);
+  });
+
+  it("supports an audited administrator adjustment", async () => {
+    const database = await createDatabase();
+    await database.exec("RESET ROLE; SET ROLE service_role");
+    await database.query("UPDATE dragon_wallets SET balance = 10000 WHERE user_id = $1", [userId]);
+    await database.query(
+      `INSERT INTO dragon_wallet_transactions
+         (user_id, amount, transaction_type, reference, balance_after)
+       VALUES ($1, 10000, 'admin_adjustment', 'test-wallet-credit:user-requested', 10000)`,
+      [userId],
+    );
+    const balance = await database.query<{
+      balance: number;
+      amount: number;
+      transaction_type: string;
+    }>(
+      `SELECT w.balance, t.amount, t.transaction_type
+       FROM dragon_wallets w JOIN dragon_wallet_transactions t USING (user_id)
+       WHERE w.user_id = $1`,
+      [userId],
+    );
+    expect(balance.rows[0]).toEqual({
+      balance: 10000,
+      amount: 10000,
+      transaction_type: "admin_adjustment",
+    });
   });
 
   it("applies the unlocked pot bonus and refuses a second harvest of the same crop", async () => {
@@ -293,6 +423,9 @@ describe("Vườn Rồng wallet and game RPCs", () => {
     await database.exec("RESET ROLE; SET ROLE anon");
     await expect(
       database.query("SELECT public.purchase_seed('red-rose', 1, $1)", [idempotencyKey]),
+    ).rejects.toThrow();
+    await expect(
+      database.query("SELECT public.purchase_fertilizer('growth', 1, $1)", [idempotencyKey]),
     ).rejects.toThrow();
     await database.exec("RESET ROLE; SET ROLE authenticated");
     await expect(
@@ -392,9 +525,10 @@ describe("Vườn Rồng wallet and game RPCs", () => {
     );
     const order = topup.rows[0]!.result;
     await expect(
-      database.query("SELECT public.process_sepay_topup(800001, $1, 'in', 100000, NULL, 'TEST-ACCOUNT', 'TEST-ACCOUNT')", [
-        order.payment_code,
-      ]),
+      database.query(
+        "SELECT public.process_sepay_topup(800001, $1, 'in', 100000, NULL, 'TEST-ACCOUNT', 'TEST-ACCOUNT')",
+        [order.payment_code],
+      ),
     ).rejects.toThrow();
     await expect(
       database.query("UPDATE wallet_topups SET status = 'paid' WHERE id = $1", [order.topup_id]),
@@ -472,14 +606,24 @@ describe("Vườn Rồng wallet and game RPCs", () => {
       "SELECT public.process_sepay_topup(712350, $1, 'in', 100000, NULL, 'OTHER-ACCOUNT', 'TEST-ACCOUNT') AS result",
       [order.payment_code],
     );
-    const state = await database.query<{ balance: number; status: string; outcome: string }>(`
+    const state = await database.query<{ balance: number; status: string; outcome: string }>(
+      `
       SELECT dragon_wallets.balance, wallet_topups.status, sepay_webhook_events.outcome
       FROM dragon_wallets
       JOIN wallet_topups ON wallet_topups.user_id = dragon_wallets.user_id
       JOIN sepay_webhook_events ON sepay_webhook_events.topup_id = wallet_topups.id
       WHERE dragon_wallets.user_id = $1 AND wallet_topups.id = $2
-    `, [userId, order.topup_id]);
-    expect(result.rows[0]?.result).toMatchObject({ status: "review_receiving_account_mismatch", credited: false });
-    expect(state.rows[0]).toEqual({ balance: 100, status: "pending", outcome: "review_receiving_account_mismatch" });
+    `,
+      [userId, order.topup_id],
+    );
+    expect(result.rows[0]?.result).toMatchObject({
+      status: "review_receiving_account_mismatch",
+      credited: false,
+    });
+    expect(state.rows[0]).toEqual({
+      balance: 100,
+      status: "pending",
+      outcome: "review_receiving_account_mismatch",
+    });
   });
 });

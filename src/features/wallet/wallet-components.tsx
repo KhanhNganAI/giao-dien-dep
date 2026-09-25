@@ -55,6 +55,7 @@ const transactionLabels: Record<string, string> = {
   harvest: "Thu hoạch cây",
   gift_redemption: "Đổi quà trong vườn",
   seed_exchange: "Đổi loại hạt",
+  admin_adjustment: "Xu thử nghiệm / điều chỉnh",
 };
 
 export function WalletHistory() {
