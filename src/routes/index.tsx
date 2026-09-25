@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   Bot,
@@ -20,10 +20,17 @@ import { Button } from "@/components/ui/button";
 import { AuthPrototypeDialog, type AuthMode } from "@/components/auth-prototype-dialog";
 import logoAsset from "@/assets/dragon-system-3-logo.jpg.asset.json";
 import teamAsset from "@/assets/dragon-system-3-team.jpg.asset.json";
+import { useAuth } from "@/integrations/supabase/auth-provider";
+import { TopupDialog, WalletBalance, WalletHistory } from "@/features/wallet/wallet-components";
+import { WalletProvider } from "@/features/wallet/wallet-provider";
 
 export const THE_SKILL_URL = "https://dragon-system-3-the-skill.vercel.app/";
 
 export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    auth: search["auth"] === "login" ? "login" as const : undefined,
+    returnTo: typeof search["returnTo"] === "string" ? search["returnTo"] : undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Dragon System 3 | Hệ sinh thái AI dành cho KOL" },
@@ -39,14 +46,14 @@ export const Route = createFileRoute("/")({
 
 const navItems = [
   ["Trang chủ", "#trang-chu"], ["The Skill", "#the-skill"], ["Apps dùng online", "#apps"],
-  ["Nạp Xu", "#nap-xu"], ["Trồng cây", "#trong-cay"], ["Khóa học", "#khoa-hoc"],
+  ["Nạp Xu", "#nap-xu"], ["Trồng cây", "/vuon-rong"], ["Khóa học", "#khoa-hoc"],
 ] as const;
 
 const features = [
   { icon: GraduationCap, title: "The Skill", text: "Bộ kỹ năng thực chiến giúp bạn làm chủ AI từng bước.", href: "#the-skill", action: "Khám phá" },
   { icon: Bot, title: "Apps dùng online", text: "Công cụ AI tập trung, sẵn sàng cho công việc sáng tạo.", href: "#apps", action: "Xem ứng dụng" },
   { icon: CircleDollarSign, title: "Nạp Xu", text: "Xem gói Xu minh bạch để chuẩn bị sử dụng các tiện ích.", href: "#nap-xu", action: "Xem bảng giá" },
-  { icon: Sprout, title: "Trồng cây", text: "Học đều mỗi ngày và nhìn thấy hành trình trưởng thành.", href: "#trong-cay", action: "Xem tiến độ" },
+  { icon: Sprout, title: "Trồng cây", text: "Gieo hạt, chăm khu vườn và gặt Xu theo tiến độ học của bạn.", href: "/vuon-rong", action: "Vào khu vườn" },
 ];
 
 const apps = [
@@ -56,9 +63,30 @@ const apps = [
 ];
 
 function Index() {
+  return <WalletProvider><IndexContent /></WalletProvider>;
+}
+
+function IndexContent() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [topupOpen, setTopupOpen] = useState(false);
+  const { user, loading: authLoading, signOut } = useAuth();
+  const search = Route.useSearch();
+
+  useEffect(() => {
+    if (search.auth === "login" && !user && !authLoading) setAuthOpen(true);
+    if (search.auth === "login" && user && !authLoading) {
+      const returnTo = search.returnTo;
+      const safePath = returnTo === "/vuon-rong" ? returnTo : "/";
+      window.location.replace(safePath);
+    }
+  }, [search.auth, search.returnTo, user, authLoading]);
+
+  const openTopup = () => {
+    if (!user) return openAuth("login");
+    setTopupOpen(true);
+  };
 
   const openAuth = (mode: AuthMode) => {
     setAuthMode(mode);
@@ -81,21 +109,21 @@ function Index() {
             {navItems.map(([label, href]) => <a key={href} href={href} className="rounded-md px-3 py-2 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground">{label}{label === "Khóa học" && <span className="ml-1 text-[9px] text-primary">MỚI</span>}</a>)}
           </nav>
           <div className="hidden items-center gap-2 md:flex xl:ml-2">
-            <div className="hidden items-center gap-2 rounded-md border border-primary/35 bg-muted/70 px-3 py-2 text-xs text-primary lg:flex"><Coins className="size-4" /> Ví Xu: Đăng nhập để xem</div>
-            <Button variant="dragonOutline" size="sm" onClick={() => openAuth("login")}>Đăng nhập</Button>
-            <Button variant="dragon" size="sm" onClick={() => openAuth("register")}>Đăng ký</Button>
+            <button type="button" className="hidden lg:block" onClick={openTopup} aria-label="Nạp Xu"><WalletBalance /></button>
+            {user ? <><span className="max-w-36 truncate text-xs text-muted-foreground">{user.email}</span><Button variant="dragonOutline" size="sm" onClick={() => void signOut()}>Đăng xuất</Button></> : <><Button variant="dragonOutline" size="sm" onClick={() => openAuth("login")}>Đăng nhập</Button><Button variant="dragon" size="sm" onClick={() => openAuth("register")}>Đăng ký</Button></>}
           </div>
           <Button variant="dragonOutline" size="icon" className="md:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label={menuOpen ? "Đóng menu" : "Mở menu"}>{menuOpen ? <X /> : <Menu />}</Button>
         </div>
         {menuOpen && <div className="border-t border-border bg-background p-4 md:hidden">
-          <div className="mb-3 flex items-center gap-2 rounded-md border border-primary/35 bg-muted/70 px-3 py-2 text-xs text-primary"><Coins className="size-4" /> Ví Xu: Đăng nhập để xem</div>
+          <button type="button" className="mb-3" onClick={openTopup}><WalletBalance /></button>
           <nav className="grid gap-1">{navItems.map(([label, href]) => <a key={href} href={href} onClick={() => setMenuOpen(false)} className="flex items-center justify-between rounded-md px-3 py-3 text-sm hover:bg-muted">{label}<ChevronRight className="size-4 text-primary" /></a>)}</nav>
-           <div className="mt-3 grid grid-cols-2 gap-2"><Button variant="dragonOutline" onClick={() => openAuth("login")}>Đăng nhập</Button><Button variant="dragon" onClick={() => openAuth("register")}>Đăng ký</Button></div>
+           {user ? <Button className="mt-3 w-full" variant="dragonOutline" onClick={() => void signOut()}>Đăng xuất</Button> : <div className="mt-3 grid grid-cols-2 gap-2"><Button variant="dragonOutline" onClick={() => openAuth("login")}>Đăng nhập</Button><Button variant="dragon" onClick={() => openAuth("register")}>Đăng ký</Button></div>}
         </div>}
 
       </header>
 
       <AuthPrototypeDialog open={authOpen} mode={authMode} onOpenChange={setAuthOpen} onModeChange={setAuthMode} />
+      <TopupDialog open={topupOpen} onOpenChange={setTopupOpen} />
 
       <main>
         <section id="trang-chu" className="scroll-mt-20 pt-16 lg:pt-20">
@@ -107,7 +135,7 @@ function Index() {
             <h1 className="font-display text-4xl font-bold uppercase leading-none text-foreground sm:text-6xl lg:text-7xl">Dragon System 3</h1>
             <p className="mt-3 font-display text-xl font-semibold text-primary sm:text-2xl">Khai phá trí tuệ • Dẫn lối tương lai</p>
             <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">Nơi cộng đồng học những skill thực chiến, dùng công cụ AI hiệu quả và xây dựng năng lực bền vững trên một hành trình thống nhất.</p>
-            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><Button asChild variant="dragon" size="lg"><a href="#the-skill">Khám phá The Skill <ArrowRight /></a></Button><Button asChild variant="dragonOutline" size="lg"><a href="#apps">Xem Apps</a></Button></div>
+            <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><Button asChild variant="dragon" size="lg"><a href="#the-skill">Khám phá The Skill <ArrowRight /></a></Button><Button asChild variant="dragonOutline" size="lg"><a href="#apps">Xem Apps</a></Button><Button asChild variant="dragonOutline" size="lg"><a href="/vuon-rong"><Sprout />Vào Vườn Rồng</a></Button></div>
           </div>
         </section>
 
@@ -132,11 +160,11 @@ function Index() {
         </div></section>
 
         <section id="nap-xu" className="scroll-mt-20 py-16 sm:py-24"><div className="mx-auto max-w-7xl px-4 lg:px-8">
-          <div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr]"><div><p className="text-xs font-bold uppercase text-primary">Ví Dragon</p><h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">Nạp Xu</h2><div className="mt-6 rounded-md border border-primary/35 bg-card p-6"><p className="text-sm text-muted-foreground">Tỷ lệ quy đổi dự kiến</p><p className="mt-2 font-display text-3xl font-bold text-primary">100.000 VNĐ = 10.000 Xu</p><p className="mt-4 text-xs leading-5 text-muted-foreground">Bản giao diện chưa xử lý thanh toán, chưa tự cộng Xu và chưa kết nối SePay.</p></div></div>
-          <div><div className="grid gap-3 sm:grid-cols-3">{[["Gói Khởi Động","10.000 Xu","100.000 VNĐ"],["Gói Bứt Phá","30.000 Xu","300.000 VNĐ"],["Gói Dẫn Đầu","50.000 Xu","500.000 VNĐ"]].map(([name,xu,price])=><div key={name} className="rounded-md border border-border bg-card p-5"><p className="text-xs text-muted-foreground">{name}</p><p className="mt-3 font-display text-2xl font-bold text-primary">{xu}</p><p className="mt-1 text-sm">{price}</p><span className="mt-5 inline-block text-[10px] font-bold uppercase text-muted-foreground">Gói tham khảo</span></div>)}</div><div className="mt-4 rounded-md border border-dashed border-border bg-card/40 p-7 text-center"><Coins className="mx-auto size-7 text-muted-foreground"/><p className="mt-3 font-medium">Chưa có giao dịch</p><p className="mt-1 text-xs text-muted-foreground">Lịch sử sẽ xuất hiện sau khi tính năng được kết nối.</p></div></div></div>
+          <div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr]"><div><p className="text-xs font-bold uppercase text-primary">Ví Dragon</p><h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">Nạp Xu</h2><div className="mt-6 rounded-md border border-primary/35 bg-card p-6"><p className="text-sm text-muted-foreground">Tỷ lệ quy đổi</p><p className="mt-2 font-display text-3xl font-bold text-primary">100.000 VNĐ = 10.000 Xu</p><p className="mt-4 text-xs leading-5 text-muted-foreground">Nạp bằng QR SePay. Số Xu chỉ cập nhật khi webhook thanh toán được xác nhận. Tài khoản nhận tiền cần được cấu hình trước khi mở nạp thật.</p><Button className="mt-5" variant="dragon" onClick={openTopup}>Tạo lệnh nạp Xu <ArrowRight /></Button></div></div>
+          <div><div className="grid gap-3 sm:grid-cols-3">{[["Gói Khởi Động","10.000 Xu","100.000 VNĐ"],["Gói Bứt Phá","30.000 Xu","300.000 VNĐ"],["Gói Dẫn Đầu","50.000 Xu","500.000 VNĐ"]].map(([name,xu,price])=><div key={name} className="rounded-md border border-border bg-card p-5"><p className="text-xs text-muted-foreground">{name}</p><p className="mt-3 font-display text-2xl font-bold text-primary">{xu}</p><p className="mt-1 text-sm">{price}</p><Button className="mt-5 w-full" variant="dragonOutline" size="sm" onClick={openTopup}>Nạp bằng QR</Button></div>)}</div><div className="mt-4 rounded-md border border-border bg-card p-5"><p className="mb-2 font-display text-lg font-bold">Giao dịch Xu gần đây</p><WalletHistory /></div></div></div>
         </div></section>
 
-        <section id="trong-cay" className="scroll-mt-20 border-y border-border bg-surface-raised/55 py-16 sm:py-24"><div className="mx-auto max-w-7xl px-4 lg:px-8"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase text-primary">Hành trình trưởng thành</p><h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">Vườn Rồng Tri Thức</h2><p className="mt-3 max-w-2xl text-muted-foreground">Mỗi bài học vun bồi một mầm cây. Duy trì tiến độ để mở khóa các cấp độ mới.</p></div><span className="w-fit rounded border border-primary/35 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary">Bản xem trước</span></div>
+        <section id="trong-cay" className="scroll-mt-20 border-y border-border bg-surface-raised/55 py-16 sm:py-24"><div className="mx-auto max-w-7xl px-4 lg:px-8"><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="text-xs font-bold uppercase text-primary">Hành trình trưởng thành</p><h2 className="mt-3 font-display text-4xl font-bold sm:text-5xl">Vườn Rồng Tri Thức</h2><p className="mt-3 max-w-2xl text-muted-foreground">Mỗi bài học vun bồi một mầm cây. Duy trì tiến độ để mở khóa các cấp độ mới.</p></div><Button asChild variant="dragon"><a href="/vuon-rong">Chơi Vườn Rồng <ArrowRight /></a></Button></div>
           <div className="mt-10 grid gap-6 lg:grid-cols-[1fr_320px]"><div className="relative min-h-[340px] overflow-hidden rounded-md border border-border bg-card p-6 sm:p-10"><div className="absolute inset-x-0 bottom-0 h-24 bg-secondary/70"/><div className="relative flex min-h-[270px] items-end justify-around gap-3">{[["Mầm Sáng",22],["Lá Rồng",48],["Tán Trí Tuệ",72],["Cổ Thụ AI",100]].map(([name,progress],i)=><div key={String(name)} className="flex min-w-0 flex-1 flex-col items-center"><div className="mb-3 text-primary">{i < 2 ? <Sprout className={i === 0 ? "size-10" : "size-16"}/> : <Leaf className={i === 2 ? "size-20" : "size-24"}/>}</div><div className="h-2 w-full max-w-28 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{width:`${progress}%`}} /></div><p className="mt-3 text-center text-xs font-semibold">{name}</p><p className="mt-1 text-[10px] text-muted-foreground">{progress}%</p></div>)}</div></div>
           <aside className="rounded-md border border-border bg-card p-6"><p className="font-display text-xl font-bold">Tiến độ học tập</p><div className="mt-6 space-y-5">{[["Khởi động","3 bài","Hoàn thành"],["Nuôi mầm","8 bài","Đang học"],["Bứt phá","15 bài","Khóa"]].map(([level,count,state],i)=><div key={level} className="grid grid-cols-[auto_1fr_auto] items-center gap-3"><div className={`grid size-8 place-items-center rounded-full ${i===0?'bg-success text-primary-foreground':'bg-muted text-muted-foreground'}`}>{i===2?<LockKeyhole className="size-4"/>:i+1}</div><div><p className="text-sm font-semibold">{level}</p><p className="text-[11px] text-muted-foreground">{count}</p></div><span className="text-[10px] text-muted-foreground">{state}</span></div>)}</div><div className="mt-7 border-t border-border pt-5"><p className="text-xs text-muted-foreground">Cấp hiện tại</p><p className="mt-1 font-semibold text-primary">Mầm Sáng • Cấp 2</p></div></aside></div>
         </div></section>

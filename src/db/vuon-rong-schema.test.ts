@@ -60,20 +60,72 @@ describe("Vườn Rồng shared Supabase schema", () => {
     const seedRows = await database.query<{
       seed_key: string;
       price_xu: number;
+      growth_seconds: number;
+      reward_min: number;
+      reward_max: number;
       bottom_row_only: boolean;
     }>(`
-      SELECT seed_key, price_xu, bottom_row_only
+      SELECT seed_key, price_xu, growth_seconds, reward_min, reward_max, bottom_row_only
       FROM seed_catalog
       ORDER BY price_xu
     `);
     expect(seedRows.rows).toEqual([
-      { seed_key: "red-rose", price_xu: 5, bottom_row_only: false },
-      { seed_key: "purple-flower", price_xu: 8, bottom_row_only: false },
-      { seed_key: "yellow-rose", price_xu: 12, bottom_row_only: false },
-      { seed_key: "apple", price_xu: 15, bottom_row_only: true },
-      { seed_key: "pear", price_xu: 20, bottom_row_only: true },
-      { seed_key: "purple-rose", price_xu: 25, bottom_row_only: true },
-      { seed_key: "orchid", price_xu: 30, bottom_row_only: true },
+      {
+        seed_key: "red-rose",
+        price_xu: 5,
+        growth_seconds: 7200,
+        reward_min: 9,
+        reward_max: 11,
+        bottom_row_only: false,
+      },
+      {
+        seed_key: "purple-flower",
+        price_xu: 8,
+        growth_seconds: 21600,
+        reward_min: 12,
+        reward_max: 16,
+        bottom_row_only: false,
+      },
+      {
+        seed_key: "yellow-rose",
+        price_xu: 12,
+        growth_seconds: 43200,
+        reward_min: 17,
+        reward_max: 22,
+        bottom_row_only: false,
+      },
+      {
+        seed_key: "apple",
+        price_xu: 15,
+        growth_seconds: 86400,
+        reward_min: 26,
+        reward_max: 33,
+        bottom_row_only: true,
+      },
+      {
+        seed_key: "pear",
+        price_xu: 20,
+        growth_seconds: 172800,
+        reward_min: 44,
+        reward_max: 54,
+        bottom_row_only: true,
+      },
+      {
+        seed_key: "purple-rose",
+        price_xu: 25,
+        growth_seconds: 172800,
+        reward_min: 52,
+        reward_max: 62,
+        bottom_row_only: true,
+      },
+      {
+        seed_key: "orchid",
+        price_xu: 30,
+        growth_seconds: 172800,
+        reward_min: 60,
+        reward_max: 72,
+        bottom_row_only: true,
+      },
     ]);
 
     await database.exec("SET ROLE authenticated");
