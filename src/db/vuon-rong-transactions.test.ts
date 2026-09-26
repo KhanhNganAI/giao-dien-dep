@@ -38,6 +38,7 @@ async function createDatabase() {
     "202609250003_wallet_topups.sql",
     "202609250004_garden_ui_wallet_adjustment.sql",
     "202609250005_garden_store_fertilizers.sql",
+    "202609260001_garden_pot_growth_bonus.sql",
   ]) {
     await database.exec(readFileSync(resolve("supabase/migrations", migrationName), "utf8"));
   }

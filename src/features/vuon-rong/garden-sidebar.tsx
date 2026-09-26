@@ -1,16 +1,7 @@
 import { BookOpen, CircleCheck, Gift, Sprout } from "lucide-react";
 import type { GameGift, GardenSlot, SeedStack } from "./garden-api";
 import type { Seed } from "./seed-catalog";
-
-const pots = [
-  [0, "Chậu Đất Nung", 5],
-  [4, "Chậu Sứ Trắng", 8],
-  [10, "Chậu Đá Hoa", 10],
-  [18, "Chậu Đồng Cổ", 13],
-  [24, "Chậu Vàng Ngọc", 15],
-  [40, "Chậu Ốc Đảo Nhiệt Đới", 18],
-  [50, "Chậu Vũ Trụ", 22],
-] as const;
+import { getPotTier, potTiers } from "./pot-tiers";
 
 export function GardenSidebar({
   lessons,
@@ -29,8 +20,7 @@ export function GardenSidebar({
   now: number;
   onRedeem: (id: string) => void;
 }) {
-  const unlocked = pots.filter(([threshold]) => lessons >= threshold);
-  const currentPot = unlocked[unlocked.length - 1];
+  const currentPot = getPotTier(lessons);
   const seedByKey = new Map(seeds.map((seed) => [seed.seed_key, seed.display_name]));
   const inventoryTotal = inventory.reduce((sum, stack) => sum + stack.quantity, 0);
   const statusLabel = (slot: GardenSlot) =>
@@ -49,24 +39,25 @@ export function GardenSidebar({
         </h2>
         <p className="mt-1 text-xs text-slate-400">{lessons} bài đã hoàn thành</p>
         <div className="mt-4 space-y-2">
-          {pots.map(([threshold, name, bonus]) => {
-            const open = lessons >= threshold;
+          {potTiers.map((tier) => {
+            const open = lessons >= tier.lessons;
             return (
               <div
-                key={threshold}
+                key={tier.lessons}
                 className={`flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs ${open ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200" : "border-white/5 text-slate-500"}`}
               >
                 <CircleCheck
                   className={`size-4 shrink-0 ${open ? "text-emerald-400" : "text-slate-600"}`}
                 />
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-                <span>+{bonus}%</span>
+                <img src={tier.image} alt="" className="size-7 shrink-0 object-contain" />
+                <span className="min-w-0 flex-1 truncate">{tier.name}</span>
+                <span>+{tier.growthBonus}% tốc độ</span>
               </div>
             );
           })}
         </div>
         <p className="mt-3 rounded-md bg-sky-500/10 p-2 text-xs text-sky-100">
-          Chậu hiện tại: <b>{currentPot?.[1]}</b> · Thưởng thu hoạch +{currentPot?.[2]}%
+          Chậu hiện tại: <b>{currentPot.name}</b> · Cây lớn nhanh hơn {currentPot.growthBonus}%
         </p>
       </section>
 

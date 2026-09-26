@@ -1,6 +1,7 @@
 import { Clock3, Snail, Sparkles } from "lucide-react";
 import type { GardenSlot } from "./garden-api";
 import { seedNames, type Seed } from "./seed-catalog";
+import { getPotTier } from "./pot-tiers";
 
 const matureCropImages: Record<string, string> = {
   "red-rose": "/game/mature/red-rose.png",
@@ -35,16 +36,7 @@ function timeLeft(readyAt: string | null, now: number) {
 
 export function GardenGrid({ slots, seeds, lessons, now, busy, onSlotClick }: GardenGridProps) {
   const seedMap = new Map(seeds.map((seed) => [seed.seed_key, seed]));
-  const potFilters: Array<[number, string]> = [
-    [0, "none"],
-    [4, "hue-rotate(95deg)"],
-    [10, "hue-rotate(38deg)"],
-    [18, "hue-rotate(165deg)"],
-    [24, "hue-rotate(55deg)"],
-    [40, "hue-rotate(300deg)"],
-    [50, "none"],
-  ];
-  const potFilter = potFilters.filter(([threshold]) => lessons >= threshold).at(-1)?.[1] ?? "none";
+  const pot = getPotTier(lessons);
 
   return (
     <section
@@ -101,11 +93,10 @@ export function GardenGrid({ slots, seeds, lessons, now, busy, onSlotClick }: Ga
                 )}
               </span>
               <img
-                src="/game/pot.webp"
-                alt=""
-                title="Chậu nâng cấp theo tiến độ học"
-                className="relative z-10 -mt-1 h-[clamp(1.5rem,8vw,3.5rem)] w-[clamp(1.75rem,9vw,5rem)] max-w-full object-contain transition-[filter] duration-500"
-                style={{ filter: potFilter }}
+                src={pot.image}
+                alt={pot.name}
+                title={`${pot.name} · cây lớn nhanh hơn ${pot.growthBonus}%`}
+                className="relative z-10 -mt-1 h-[clamp(1.5rem,8vw,3.5rem)] w-[clamp(1.75rem,9vw,5rem)] max-w-full object-contain transition-transform duration-500"
               />
               <span className="relative z-10 mt-1 flex max-w-full flex-wrap items-center justify-center gap-x-0.5 rounded-full bg-slate-950/70 px-0.5 py-1 text-[7px] font-semibold leading-tight text-slate-100 sm:gap-1 sm:px-2 sm:text-xs">
                 Ô {slot.slot_index} ·{" "}

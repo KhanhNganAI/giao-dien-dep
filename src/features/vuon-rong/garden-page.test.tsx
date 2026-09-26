@@ -127,7 +127,7 @@ describe("Vườn Rồng game screen", () => {
     );
     expect(screen.getAllByRole("button", { name: /^Ô \d+:/ })).toHaveLength(12);
     expect(screen.getByText("4 bài đã hoàn thành")).toBeInTheDocument();
-    expect(screen.getAllByText(/Chậu Sứ Trắng/)).toHaveLength(2);
+    expect(screen.getAllByText(/Mộc Long Phong Chậu/)).toHaveLength(2);
   });
 
   it("shows the full Dragon team banner above the garden title without cropping the image", async () => {
