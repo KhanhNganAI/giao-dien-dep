@@ -165,3 +165,66 @@
   html { scroll-behavior: smooth; }
   ::selection { background: var(--primary); color: var(--primary-foreground); }
 }
+
+@keyframes dragon-duo-traverse {
+  0% { left: -48%; opacity: 0; }
+  14% { opacity: 0.72; }
+  78% { opacity: 0.72; }
+  100% { left: 100%; opacity: 0; }
+}
+
+@keyframes dragon-duo-undulate {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  25% { transform: translateY(-14px) rotate(1deg); }
+  50% { transform: translateY(3px) rotate(3deg); }
+  75% { transform: translateY(13px) rotate(-1deg); }
+}
+
+.dragon-duo-flight {
+  position: absolute;
+  left: -48%;
+  width: clamp(13rem, 38vw, 23rem);
+  aspect-ratio: 8 / 3;
+  opacity: 0;
+  will-change: left, opacity;
+  animation: dragon-duo-traverse 19s linear infinite;
+}
+
+.dragon-duo-starlight {
+  top: 7%;
+  animation-delay: -3s;
+  filter: drop-shadow(0 0 10px rgb(250 230 160 / 30%));
+}
+
+.dragon-duo-night {
+  top: 60%;
+  animation-duration: 23s;
+  animation-delay: -10s;
+  filter: drop-shadow(0 0 12px rgb(147 51 234 / 25%));
+}
+
+.dragon-duo-wobble {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  animation: dragon-duo-undulate 4.16s ease-in-out infinite;
+}
+
+.dragon-duo-night .dragon-duo-wobble { animation-delay: -2.08s; }
+
+.dragon-duo-sprite {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+@keyframes dragon-duo-frame-blend {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dragon-duo-next-frame { animation: dragon-duo-frame-blend 520ms linear both; }

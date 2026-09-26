@@ -2,6 +2,7 @@ import { Clock3, Snail, Sparkles } from "lucide-react";
 import type { GardenSlot } from "./garden-api";
 import { seedNames, type Seed } from "./seed-catalog";
 import { getPotTier } from "./pot-tiers";
+import { DragonDuo } from "./dragon-duo";
 
 const matureCropImages: Record<string, string> = {
   "red-rose": "/game/mature/red-rose.png",
@@ -48,7 +49,8 @@ export function GardenGrid({ slots, seeds, lessons, now, busy, onSlotClick }: Ga
         style={{ backgroundImage: "url('/game/sky-night.webp')" }}
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-sky-300/20 to-transparent" />
-      <div className="relative grid grid-cols-6 gap-x-0.5 gap-y-5 sm:gap-x-2 sm:gap-y-7 lg:gap-x-3 lg:gap-y-8">
+        <DragonDuo />
+      <div className="relative z-10 grid grid-cols-6 gap-x-0.5 gap-y-5 sm:gap-x-2 sm:gap-y-7 lg:gap-x-3 lg:gap-y-8">
         {slots.map((slot) => {
           const seed = slot.seed_key ? seedMap.get(slot.seed_key) : undefined;
           const ready = slot.ready_at ? new Date(slot.ready_at).getTime() <= now : false;
